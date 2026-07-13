@@ -197,9 +197,15 @@ def audio_energy(
         return _buckets_from_json(cached["buckets"])
 
     log.info("Berechne Audio-Energie (astats) ...")
+    # WICHTIG: Kein ":file=-" anhaengen! Das wuerde die Ausgabe nach
+    # stdout umleiten UND das Zeilenformat aendern (nur noch
+    # "key=value" ohne die "frame:.../pts_time:..."-Kopfzeilen, die
+    # unser Parser unten braucht, um jeden Wert einem Zeitpunkt
+    # zuzuordnen). Ohne "file=" schreibt ametadata=print ganz normal
+    # auf stderr, inklusive der pts_time-Zeile vor jedem Wert.
     af_filter = (
         "astats=metadata=1:reset=1,"
-        "ametadata=print:key=lavfi.astats.Overall.RMS_level:file=-"
+        "ametadata=print:key=lavfi.astats.Overall.RMS_level"
     )
     cmd = [
         "ffmpeg", "-hide_banner", "-y",
