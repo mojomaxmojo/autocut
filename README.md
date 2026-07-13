@@ -6,7 +6,7 @@ offline (`--no-ai`); ein optionaler KI-Layer (lokale Transkription per
 whisper.cpp + Cloud-Free-Tier-LLM-Scoring) kann zusaetzlich aktiviert
 werden, wenn ein API-Key vorhanden ist.
 
-Der aktuelle Stand entspricht **Schritt 8** aus `FEATURE-PLAN.md` -
+Der aktuelle Stand entspricht **Schritt 9** aus `FEATURE-PLAN.md` -
 damit ist der komplette Ausbauplan fertig: Fundament +
 Proxy-Encode/Motion/Audio + Beat-Erkennung (aubio mit Zeitraster-
 Fallback) + Stille-Grobschnitt (auto-editor) + Score-Fusion und
@@ -14,7 +14,9 @@ Segmentauswahl mit Snap-to-Beat + echter Video-Export (Reels,
 Kurzclips, mehrere Seitenverhaeltnisse) + optionale lokale
 Transkription via whisper.cpp + optionales LLM-Segment-Scoring
 (Groq/OpenRouter) + Batch-Verarbeitung ganzer Ordner mit
-Gesamt-Fortschrittsanzeige und Fehlerisolation pro Video.
+Gesamt-Fortschrittsanzeige und Fehlerisolation pro Video + optionaler
+Video-Merge (`--merge`), um mehrere Videos vor der Verarbeitung zu
+einem durchgehenden Stream zusammenzufuegen.
 
 Zielsystem: CachyOS (Arch-basiert), Lenovo ThinkPad T550, Intel
 Dual-Core CPU, Intel HD Graphics 5500 (iGPU, kein NVENC), 8-16 GB RAM.
@@ -96,12 +98,17 @@ LLM-Segment-Scoring.
 # Einzelne Datei, komplett ohne KI (nur Motion-Score + Audio-Energie + Beat/Pause-Erkennung):
 python run.py --input ./videos/wohnmobil_tag3.mp4 --lengths 60,90,120 --clip-lengths 5,10,15 --no-ai
 
-# Ganzer Ordner (Batch-Verarbeitung, Schritt 8), mit KI-Scoring wenn API_KEY in .env gesetzt ist:
+# Ganzer Ordner (Batch-Verarbeitung, Schritt 8): jedes Video einzeln, mit KI-Scoring
+# wenn API_KEY in .env gesetzt ist:
 python run.py --input ./videos/ --lengths 60,90,120 --clip-lengths 5,10,15
 
 # Ganzer Ordner, komplett ohne KI (empfehlenswert bei Videos ohne durchgehenden
 # gesprochenen Kommentar, z.B. reine Landschafts-/Fahrrad-Aufnahmen):
 python run.py --input ./Videos/ --lengths 60,90,120 --clip-lengths 5,10,15 --no-ai
+
+# Ganzer Ordner, ALLE Videos zuerst zu einem durchgehenden Stream zusammenfuegen
+# und danach EINMAL als Ganzes verarbeiten (statt jedes Video einzeln):
+python run.py --input ./Videos/ --merge --lengths 60,90,120 --clip-lengths 5,10,15 --no-ai
 
 # Nur Konfiguration pruefen, ohne etwas zu berechnen:
 python run.py --input ./videos/test.mp4 --no-ai --dry-run
@@ -112,17 +119,39 @@ python run.py --help
 
 **Batch-Verarbeitung (Schritt 8):** Ist `--input` ein Ordner statt
 einer einzelnen Datei, werden alle `.mp4`/`.MP4`-Dateien darin
-sequenziell verarbeitet (jede Datei nutzt intern weiterhin die
-Parallelitaet aus Schritt 2 fuer ihre eigenen Analyse-Schritte). Die
-Konsole zeigt dabei eine Gesamt-Fortschrittsanzeige
-("Verarbeite Video 2/5: ..."). Schlaegt die Verarbeitung eines
-einzelnen Videos fehl (z.B. eine beschaedigte Datei), wird das
-protokolliert, die restlichen Videos im Ordner werden aber trotzdem
-weiterverarbeitet - am Ende gibt es eine Zusammenfassung, wie viele
-Videos erfolgreich waren und welche fehlgeschlagen sind. Checkpoints
-(Motion/Audio/Transkript etc.) gelten weiterhin pro Video, ein zweiter
-Lauf ueber denselben Ordner ist dadurch fuer bereits verarbeitete
-Dateien deutlich schneller.
+standardmaessig EINZELN und sequenziell verarbeitet (jede Datei nutzt
+intern weiterhin die Parallelitaet aus Schritt 2 fuer ihre eigenen
+Analyse-Schritte). Die Konsole zeigt dabei eine Gesamt-
+Fortschrittsanzeige ("Verarbeite Video 2/5: ..."). Schlaegt die
+Verarbeitung eines einzelnen Videos fehl (z.B. eine beschaedigte
+Datei), wird das protokolliert, die restlichen Videos im Ordner werden
+aber trotzdem weiterverarbeitet - am Ende gibt es eine Zusammenfassung,
+wie viele Videos erfolgreich waren und welche fehlgeschlagen sind.
+Checkpoints (Motion/Audio/Transkript etc.) gelten weiterhin pro Video,
+ein zweiter Lauf ueber denselben Ordner ist dadurch fuer bereits
+verarbeitete Dateien deutlich schneller.
+
+**Video-Merge (`--merge`):** Alternative zur Batch-Verarbeitung - fuegt
+ALLE Videos im Ordner (in alphabetischer Dateinamen-Reihenfolge)
+zuerst zu einem einzigen, durchgehenden Video zusammen und fuehrt die
+komplette Pipeline danach nur EINMAL auf diesem zusammengefuegten
+Video aus. Sinnvoll, wenn mehrere kurze Clips eigentlich zu einer
+zusammenhaengenden Aufnahme gehoeren (z.B. mehrere Segmente derselben
+Fahrradtour) und Highlights ueber die gesamte kombinierte Laenge
+verteilt gefunden werden sollen, statt pro Einzeldatei separat.
+
+Technisch: Zuerst wird ein schnelles Stream-Copy-Merge versucht (kein
+Qualitaetsverlust, sehr schnell) - das funktioniert zuverlaessig, wenn
+alle Quell-Videos dieselbe Aufloesung/denselben Codec haben (z.B.
+mehrere Aufnahmen derselben Kamera/Handy-App). Schlaegt das fehl (z.B.
+weil die Videos von unterschiedlichen Geraeten mit unterschiedlichen
+Aufloesungen stammen), faellt das Tool automatisch auf ein robusteres,
+aber langsameres Re-Encode-Merge zurueck, das alle Videos auf eine
+einheitliche Aufloesung skaliert. Das zusammengefuegte Video wird
+gecacht (`.autocut_cache/_merged/<hash>/merged.mp4`) - ein zweiter
+Lauf mit denselben Quell-Dateien muss nicht erneut zusammengefuegt
+werden. Der Output-Ordnername entspricht dem Namen des Input-Ordners
+(statt des technischen Dateinamens "merged").
 
 **Aktueller Funktionsumfang (Schritt 2/3):** Fuer jede Eingabedatei wird
 ein 480p-Proxy erzeugt (Original bleibt unveraendert), anschliessend
@@ -275,6 +304,7 @@ src/autocut/
   encode.py                  # Video-Export: Reels, Kurzclips, Formate
   transcribe.py               # Optionale Transkription via whisper.cpp
   llm_scoring.py              # Optionales LLM-Segment-Scoring (Groq/OpenRouter)
+  merge.py                    # Video-Merge (--merge): mehrere Videos zu einem Stream
 ```
 
 ## Ausbauplan

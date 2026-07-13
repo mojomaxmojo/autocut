@@ -512,6 +512,48 @@ Ordner gleichzeitig sichtbar.
 
 ---
 
+## Schritt 9 — Erweiterung: Video-Merge (`--merge`)
+
+**Ziel (Nutzerwunsch, nachträglich hinzugefügt):** Alle Videos in einem
+Ordner sollen optional zuerst zu einem einzigen, durchgehenden Video
+zusammengefügt werden, bevor die Pipeline läuft — statt (wie in
+Schritt 8) jedes Video einzeln zu verarbeiten. Sinnvoll, wenn mehrere
+Clips eigentlich zu einer zusammenhängenden Aufnahme gehören.
+
+**Neue Dateien:**
+- `src/autocut/merge.py`
+  - Funktion `merge_videos(video_paths, cache_root, logger) -> str`:
+    fügt mehrere Videos (alphabetisch sortiert) zu einer Datei zusammen,
+    Checkpoint-geprüft. Versucht zuerst schnelles Stream-Copy-Merge
+    (ffmpeg concat-Demuxer), fällt bei unterschiedlichen Auflösungen/
+    Codecs automatisch auf ein robusteres Re-Encode-Merge zurück
+    (concat-Filter, skaliert auf einheitliche Auflösung).
+
+**Angepasste Stellen:**
+- `src/autocut/checkpoint.py`: neue Funktion `merged_cache_dir(...)`
+  (Cache-Schlüssel basierend auf allen Quell-Dateien).
+- `src/autocut/cli.py`: neues CLI-Flag `--merge`; bei einem Ordner als
+  `--input` mit `--merge` wird zuerst `merge_videos(...)` aufgerufen,
+  danach läuft `process_single_video(...)` genau einmal auf dem
+  zusammengefügten Video (statt der Batch-Schleife aus Schritt 8).
+  `process_single_video(...)` bekommt einen neuen optionalen Parameter
+  `output_name`, damit der Output-Ordner den Namen des Input-Ordners
+  trägt statt des technischen Dateinamens "merged".
+
+**Neue Pakete:** keine.
+
+**TESTHINWEIS (Terminal):**
+```bash
+python run.py --input ./Videos/ --merge --no-ai --lengths 60,90,120 --clip-lengths 5,10,15
+```
+Erwartung: Log zeigt "Füge N Videos zu einem durchgehenden Stream
+zusammen ...", danach läuft die komplette Analyse/Export-Pipeline nur
+EINMAL (nicht pro Einzelvideo). Ergebnis landet unter
+`output/<Ordnername>/`. Ein zweiter Lauf mit denselben Quell-Dateien
+überspringt das erneute Zusammenfügen ("bereits vorhanden").
+
+---
+
 ## Checkliste
 
 - [x] Schritt 1 — Fundament: Config, Logging, Checkpointing, CLI-Grundgerüst
@@ -522,6 +564,7 @@ Ordner gleichzeitig sichtbar.
 - [x] Schritt 6 — Optional: whisper.cpp-Transkription mit sauberem Fallback
 - [x] Schritt 7 — Optional: LLM-Segment-Scoring (Groq/OpenRouter) mit sauberem Fallback
 - [x] Schritt 8 — Batch-Verarbeitung ganzer Ordner + Gesamt-Fortschrittsanzeige
+- [x] Schritt 9 — Erweiterung: Video-Merge (`--merge`), alle Videos zu einem Stream zusammenfügen
 
 Nach jedem abgehakten Schritt ist das Projekt vollständig lauffähig und
 kann per `python run.py --input ... --no-ai` (oder ohne `--no-ai`, ab

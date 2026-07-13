@@ -25,6 +25,7 @@ from .encode import export_all
 from .ffmpeg_utils import detect_hw_encoder
 from .llm_scoring import score_segments
 from .logging_setup import setup_logging
+from .merge import merge_videos
 from .resources import set_soft_ram_limit, warn_if_high_memory
 from .scoring import build_edit_plan, fuse_scores, select_buckets
 from .transcribe import transcribe
@@ -115,6 +116,17 @@ def _print_summary(
     default=False,
     help="Zeigt nur die geladene Konfiguration an, ohne irgendetwas zu berechnen.",
 )
+@click.option(
+    "--merge",
+    "merge_videos_flag",
+    is_flag=True,
+    default=False,
+    help=(
+        "Bei einem Ordner als --input: fuegt zuerst ALLE Videos im Ordner zu einem "
+        "durchgehenden Stream zusammen und verarbeitet danach nur dieses eine "
+        "zusammengefuegte Video (statt jedes Video einzeln, wie im Standard-Batch-Modus)."
+    ),
+)
 def main(
     input_path: str,
     config_path: str,
@@ -122,6 +134,7 @@ def main(
     lengths: str,
     clip_lengths_raw: str,
     dry_run: bool,
+    merge_videos_flag: bool,
 ) -> None:
     """Autocut Highlight CLI - erzeugt automatisch Highlight-Reels aus
     langem Reise-/Wohnmobil-/Landschafts-Rohmaterial, lokal und ohne
@@ -160,7 +173,24 @@ def main(
         if not video_files:
             logger.warning("Keine .mp4-Dateien in %s gefunden.", input_path)
             return
-        _run_batch(video_files, config, logger, reel_lengths, clip_lengths, no_ai, env)
+        if merge_videos_flag:
+            if len(video_files) == 1:
+                logger.info("Nur eine Videodatei gefunden - --merge hat keine Wirkung.")
+                process_single_video(str(video_files[0]), config, logger, reel_lengths, clip_lengths, no_ai, env)
+            else:
+                merged_path = merge_videos(
+                    [str(p) for p in video_files], config.paths.cache_dir, logger
+                )
+                logger.info(
+                    "%d Videos zusammengefuegt - verarbeite jetzt den kompletten Stream.",
+                    len(video_files),
+                )
+                output_name = Path(input_path).resolve().name or "merged"
+                process_single_video(
+                    merged_path, config, logger, reel_lengths, clip_lengths, no_ai, env, output_name
+                )
+        else:
+            _run_batch(video_files, config, logger, reel_lengths, clip_lengths, no_ai, env)
     else:
         process_single_video(input_path, config, logger, reel_lengths, clip_lengths, no_ai, env)
 
@@ -226,13 +256,19 @@ def process_single_video(
     clip_lengths: list[int],
     no_ai: bool,
     env: dict[str, str | None],
+    output_name: str | None = None,
 ) -> None:
     """Fuehrt die komplette Pipeline fuer ein einzelnes Video aus:
     Analyse (Schritt 2/3), optionale Transkription + LLM-Scoring
     (Schritt 6/7, nur wenn no_ai False ist), Score-Fusion/Segmentauswahl
     (Schritt 4) und Video-Export (Schritt 5: Reels + Kurzclips + mehrere
     Formate). Wird sowohl fuer Einzeldateien als auch (mehrfach) fuer
-    Batch-Verarbeitung eines ganzen Ordners (Schritt 8) aufgerufen."""
+    Batch-Verarbeitung eines ganzen Ordners (Schritt 8) aufgerufen.
+
+    output_name ueberschreibt den Output-Ordnernamen (Standard: Dateiname
+    ohne Endung) - nuetzlich beim Video-Merge (--merge), wo der
+    zusammengefuegte Video-Dateiname sonst technisch (z.B. "merged")
+    statt aussagekraeftig waere."""
     result = run_analysis(video_path, config, logger)
     warn_if_high_memory(logger, config.resources.ram_warn_mb)
 
@@ -320,7 +356,7 @@ def process_single_video(
     # Video-Export (Schritt 5): echte MP4-Reels + Kurzclips erzeugen.
     hw_encoder = detect_hw_encoder(logger)
     cache_dir = video_cache_dir(video_path, config.paths.cache_dir)
-    video_name = Path(video_path).stem
+    video_name = output_name or Path(video_path).stem
     video_output_dir = Path(config.output.output_dir) / video_name
 
     export_result = export_all(
