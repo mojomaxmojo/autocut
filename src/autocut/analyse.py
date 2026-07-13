@@ -14,10 +14,12 @@ from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 
+from .beats import get_snap_points
 from .checkpoint import read_checkpoint, video_cache_dir, write_checkpoint
 from .config import Config
 from .ffmpeg_utils import probe_duration, run_ffmpeg
 from .parallel import run_parallel
+from .silence import merge_silence_with_snap, run_auto_editor
 
 _SHOWINFO_PTS_RE = re.compile(r"pts_time:([0-9.]+)")
 _AMETADATA_FRAME_RE = re.compile(r"pts_time:([0-9.]+)")
@@ -41,6 +43,8 @@ class AnalysisResult:
     cache_dir: str
     motion_buckets: list[Bucket] = field(default_factory=list)
     audio_buckets: list[Bucket] = field(default_factory=list)
+    snap_points: list[float] = field(default_factory=list)
+    silence_segments: list[dict] = field(default_factory=list)
 
 
 def _buckets_to_json(buckets: list[Bucket]) -> list[dict]:
@@ -311,15 +315,21 @@ def run_analysis(
 
     proxy_path = make_proxy(input_path, cache_dir, config.proxy_resolution, log)
 
-    # Motion- und Audio-Analyse sind unabhaengig voneinander und laufen
-    # daher parallel (begrenzt durch resources.max_parallel_jobs).
+    # Motion-Score, Audio-Energie, Beat-Erkennung (aubio) und
+    # Stille-Erkennung (auto-editor) sind alle unabhaengig voneinander
+    # und laufen daher parallel (begrenzt durch resources.max_parallel_jobs,
+    # damit der Dual-Core-CPU nicht ueberlastet wird).
     tasks = [
         partial(motion_score, proxy_path, cache_dir, duration, config, log),
         partial(audio_energy, input_path, cache_dir, duration, config, log),
+        partial(get_snap_points, input_path, duration, config, cache_dir, log),
+        partial(run_auto_editor, input_path, cache_dir, config.silent_speed, log),
     ]
-    motion_buckets, audio_buckets = run_parallel(
+    motion_buckets, audio_buckets, snap_points, silence_segments = run_parallel(
         tasks, max_workers=config.resources.max_parallel_jobs, logger=log
     )
+
+    snap_points = merge_silence_with_snap(snap_points, silence_segments)
 
     return AnalysisResult(
         input_path=input_path,
@@ -328,4 +338,6 @@ def run_analysis(
         cache_dir=str(cache_dir),
         motion_buckets=motion_buckets,
         audio_buckets=audio_buckets,
+        snap_points=snap_points,
+        silence_segments=silence_segments,
     )

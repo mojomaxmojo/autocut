@@ -168,6 +168,8 @@ def _run_analysis_for_video(video_path: str, config: Config, logger: logging.Log
     logger.info("  Proxy:            %s", result.proxy_path)
     logger.info("  Motion-Buckets:   %d Zeitfenster", len(result.motion_buckets))
     logger.info("  Audio-Buckets:    %d Zeitfenster", len(result.audio_buckets))
+    logger.info("  Erkannte Beats:   %d Snap-Punkte", len(result.snap_points))
+    logger.info("  Stille-Segmente:  %d", sum(1 for s in result.silence_segments if s.get("silent")))
 
     preview_count = min(5, len(result.motion_buckets))
     if preview_count:

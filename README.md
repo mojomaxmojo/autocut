@@ -6,10 +6,10 @@ offline (`--no-ai`); ein optionaler KI-Layer (lokale Transkription per
 whisper.cpp + Cloud-Free-Tier-LLM-Scoring) kann zusaetzlich aktiviert
 werden, wenn ein API-Key vorhanden ist.
 
-Der aktuelle Stand entspricht **Schritt 2** aus `FEATURE-PLAN.md`
-(Fundament + Proxy-Encode, Motion-Score via mpdecimate, Audio-Energie
-via astats). Beat/Stille-Erkennung, Score-Fusion und Encoding/Export
-folgen in den naechsten Schritten.
+Der aktuelle Stand entspricht **Schritt 3** aus `FEATURE-PLAN.md`
+(Fundament + Proxy-Encode/Motion/Audio + Beat-Erkennung via aubio mit
+Zeitraster-Fallback + Stille-Grobschnitt via auto-editor). Score-Fusion
+und Encoding/Export folgen in den naechsten Schritten.
 
 Zielsystem: CachyOS (Arch-basiert), Lenovo ThinkPad T550, Intel
 Dual-Core CPU, Intel HD Graphics 5500 (iGPU, kein NVENC), 8-16 GB RAM.
@@ -101,14 +101,21 @@ python run.py --input ./videos/test.mp4 --no-ai --dry-run
 python run.py --help
 ```
 
-**Aktueller Funktionsumfang (Schritt 2):** Fuer jede Eingabedatei wird
+**Aktueller Funktionsumfang (Schritt 3):** Fuer jede Eingabedatei wird
 ein 480p-Proxy erzeugt (Original bleibt unveraendert), anschliessend
-werden Motion-Score (Bewegungsintensitaet) und Audio-Energie
-(Lautstaerke) pro Zeitfenster berechnet und in der Konsole als Vorschau
-ausgegeben. Alle Zwischenergebnisse werden unter `.autocut_cache/`
-gecacht - ein zweiter Lauf mit denselben Dateien ist dadurch deutlich
-schneller. Segmentauswahl, Beat-Snapping und der eigentliche
-Video-Export folgen in den naechsten Schritten.
+werden parallel berechnet: Motion-Score (Bewegungsintensitaet),
+Audio-Energie (Lautstaerke), Beat/Onset-Erkennung (aubio, mit
+automatischem Zeitraster-Fallback bei fehlender Musik) und
+Stille-Erkennung (auto-editor). Alle Ergebnisse werden in der Konsole
+als Vorschau ausgegeben und unter `.autocut_cache/` gecacht - ein
+zweiter Lauf mit denselben Dateien ist dadurch deutlich schneller.
+Segmentauswahl/Score-Fusion und der eigentliche Video-Export folgen in
+den naechsten Schritten.
+
+Fehlen `aubio` oder `auto-editor` auf dem System, laeuft die Pipeline
+trotzdem vollstaendig durch - es wird nur eine Log-Warnung ausgegeben
+und automatisch auf ein gleichmaessiges Zeitraster bzw. keine
+Stille-Information zurueckgefallen (kein Absturz).
 
 ## Konfiguration
 
