@@ -175,6 +175,16 @@ motion/audio gewichtet wird. Fehlt der API_KEY, oder schlaegt ein
 Request fehl, wird automatisch auf motion+audio zurueckgefallen -
 kein Fehler, nur ein Log-Hinweis.
 
+**Hinweis zu OpenRouter-Modellen:** OpenRouters Angebot an `:free`-
+Modellen wechselt haeufig - ein heute kostenloses Modell kann morgen
+mit `HTTP 404 "unavailable for free"` fehlschlagen. Standardmaessig ist
+`llm.openrouter_model` in `config.yaml` auf `openrouter/free` gesetzt
+(OpenRouters eigener Free-Router, waehlt automatisch ein aktuell
+verfuegbares kostenloses Modell). Willst du ein bestimmtes Modell
+erzwingen, pruefe zuerst https://openrouter.ai/models?q=free auf den
+aktuellen Modell-Slug. Bei einem 404 laeuft die Pipeline trotzdem
+weiter (motion+audio ohne LLM-Score), nur eine Log-Warnung erscheint.
+
 **Hinweis zu auto-editor-Versionen:** Die auto-editor-CLI hat ihre
 Export-Flags mehrfach geaendert (aeltere Anleitungen nennen z.B.
 `--export json`, was in aktuellen Versionen mit `Unknown export format`

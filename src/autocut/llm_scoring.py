@@ -104,6 +104,17 @@ def _call_chat_completions(
         logger.warning("LLM-Request fehlgeschlagen (%s) - Segment wird ohne LLM-Score bewertet.", exc)
         return None
 
+    if response.status_code == 404 and "unavailable for free" in response.text.lower():
+        logger.warning(
+            "Konfiguriertes Modell '%s' ist nicht mehr kostenlos verfuegbar (HTTP 404). "
+            "OpenRouters Free-Tier-Angebot wechselt haeufig - setze in config.yaml unter "
+            "llm.openrouter_model entweder 'openrouter/free' (automatische Auswahl) oder "
+            "ein aktuelles Modell von https://openrouter.ai/models?q=free. "
+            "Segment wird ohne LLM-Score bewertet.",
+            model,
+        )
+        return None
+
     if response.status_code != 200:
         logger.warning(
             "LLM-Request lieferte Status %d - Segment wird ohne LLM-Score bewertet: %s",

@@ -68,7 +68,16 @@ whisper:
 llm:
   provider: "groq"          # "groq" oder "openrouter"
   groq_model: "llama-3.1-8b-instant"
-  openrouter_model: "meta-llama/llama-3.1-8b-instruct:free"
+  # OpenRouters Angebot an :free-Modellen wechselt haeufig (Modelle
+  # koennen jederzeit aus dem kostenlosen Tier fallen, z.B.
+  # "meta-llama/llama-3.1-8b-instruct:free" -> HTTP 404 "unavailable
+  # for free"). "openrouter/free" ist OpenRouters eigener Free-Router,
+  # der automatisch ein aktuell verfuegbares kostenloses Modell
+  # auswaehlt - dadurch bleibt die Konfiguration stabil, auch wenn
+  # einzelne Modelle rotieren. Falls du ein bestimmtes Modell willst,
+  # hier den exakten Slug von https://openrouter.ai/models?q=free
+  # eintragen (Stand pruefen, bevor du dich darauf verlaesst).
+  openrouter_model: "openrouter/free"
   request_delay_sec: 1.0    # Pause zwischen Requests (Free-Tier Rate-Limits)
 
 # Export-Einstellungen
