@@ -1,10 +1,10 @@
 """CLI-Einstiegspunkt fuer das Autocut Highlight Tool.
 
-Schritt 1 (Fundament): laedt Konfiguration + .env, richtet Logging und
-RAM-Schutz ein und zeigt eine Zusammenfassung der aktiven Einstellungen.
-Die eigentliche Video-Pipeline (Analyse, Scoring, Encoding, optionale
-KI-Schritte) wird in den naechsten Schritten laut FEATURE-PLAN.md
-angebunden.
+Laedt Konfiguration + .env, richtet Logging und RAM-Schutz ein und
+fuehrt die Analyse-Pipeline (Schritt 2: Proxy-Encode, Motion-Score,
+Audio-Energie) fuer die angegebene Datei aus. Weitere Pipeline-Schritte
+(Beat/Stille-Erkennung, Score-Fusion, Encoding/Export, optionale
+KI-Schritte) werden gemaess FEATURE-PLAN.md ergaenzt.
 """
 
 from __future__ import annotations
@@ -14,9 +14,10 @@ from pathlib import Path
 
 import click
 
+from .analyse import run_analysis
 from .config import Config, ConfigError, load_config, load_env
 from .logging_setup import setup_logging
-from .resources import set_soft_ram_limit
+from .resources import set_soft_ram_limit, warn_if_high_memory
 
 
 def _parse_int_list(value: str) -> list[int]:
@@ -63,11 +64,6 @@ def _print_summary(
                 "LLM-Scoring wird automatisch uebersprungen (kein Fehler)."
             )
     logger.info("=" * 60)
-    logger.info(
-        "Hinweis: Dies ist Schritt 1 (Fundament). Die eigentliche "
-        "Video-Analyse und der Export folgen in den naechsten "
-        "Ausbaustufen laut FEATURE-PLAN.md."
-    )
 
 
 @click.command()
@@ -147,11 +143,43 @@ def main(
         logger.info("Dry-Run beendet (keine Video-Verarbeitung durchgefuehrt).")
         return
 
-    logger.info(
-        "Pipeline wuerde jetzt starten mit den obigen Einstellungen. "
-        "Die Analyse-/Encoding-Schritte werden in den naechsten "
-        "Ausbaustufen ergaenzt (siehe FEATURE-PLAN.md, Schritt 2 ff.)."
-    )
+    if input_is_dir:
+        video_files = sorted(
+            p for p in Path(input_path).iterdir() if p.suffix.lower() == ".mp4"
+        )
+        if not video_files:
+            logger.warning("Keine .mp4-Dateien in %s gefunden.", input_path)
+            return
+        for index, video_path in enumerate(video_files, start=1):
+            logger.info("--- Video %d/%d: %s ---", index, len(video_files), video_path.name)
+            _run_analysis_for_video(str(video_path), config, logger)
+    else:
+        _run_analysis_for_video(input_path, config, logger)
+
+
+def _run_analysis_for_video(video_path: str, config: Config, logger: logging.Logger) -> None:
+    """Fuehrt die Analyse-Pipeline (Schritt 2) fuer ein einzelnes Video
+    aus und gibt eine kurze, verstaendliche Zusammenfassung aus."""
+    result = run_analysis(video_path, config, logger)
+    warn_if_high_memory(logger, config.resources.ram_warn_mb)
+
+    logger.info("Analyse abgeschlossen fuer: %s", video_path)
+    logger.info("  Videolaenge:      %.1f Sekunden", result.duration)
+    logger.info("  Proxy:            %s", result.proxy_path)
+    logger.info("  Motion-Buckets:   %d Zeitfenster", len(result.motion_buckets))
+    logger.info("  Audio-Buckets:    %d Zeitfenster", len(result.audio_buckets))
+
+    preview_count = min(5, len(result.motion_buckets))
+    if preview_count:
+        logger.info("  Erste %d Zeitfenster (Motion / Audio Score):", preview_count)
+        for i in range(preview_count):
+            m = result.motion_buckets[i]
+            a = result.audio_buckets[i] if i < len(result.audio_buckets) else None
+            audio_score = f"{a.score:.2f}" if a else "n/a"
+            logger.info(
+                "    %6.1fs - %6.1fs: motion=%.2f audio=%s",
+                m.start, m.end, m.score, audio_score,
+            )
 
 
 cli = main

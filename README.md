@@ -6,9 +6,10 @@ offline (`--no-ai`); ein optionaler KI-Layer (lokale Transkription per
 whisper.cpp + Cloud-Free-Tier-LLM-Scoring) kann zusaetzlich aktiviert
 werden, wenn ein API-Key vorhanden ist.
 
-Der aktuelle Stand entspricht **Schritt 1** aus `FEATURE-PLAN.md`
-(Fundament: Config, Logging, Checkpointing, RAM-Schutz, CLI-Grundgerueut).
-Die eigentliche Video-Analyse/Encoding folgt in den naechsten Schritten.
+Der aktuelle Stand entspricht **Schritt 2** aus `FEATURE-PLAN.md`
+(Fundament + Proxy-Encode, Motion-Score via mpdecimate, Audio-Energie
+via astats). Beat/Stille-Erkennung, Score-Fusion und Encoding/Export
+folgen in den naechsten Schritten.
 
 Zielsystem: CachyOS (Arch-basiert), Lenovo ThinkPad T550, Intel
 Dual-Core CPU, Intel HD Graphics 5500 (iGPU, kein NVENC), 8-16 GB RAM.
@@ -99,6 +100,15 @@ python run.py --input ./videos/test.mp4 --no-ai --dry-run
 # Hilfe anzeigen:
 python run.py --help
 ```
+
+**Aktueller Funktionsumfang (Schritt 2):** Fuer jede Eingabedatei wird
+ein 480p-Proxy erzeugt (Original bleibt unveraendert), anschliessend
+werden Motion-Score (Bewegungsintensitaet) und Audio-Energie
+(Lautstaerke) pro Zeitfenster berechnet und in der Konsole als Vorschau
+ausgegeben. Alle Zwischenergebnisse werden unter `.autocut_cache/`
+gecacht - ein zweiter Lauf mit denselben Dateien ist dadurch deutlich
+schneller. Segmentauswahl, Beat-Snapping und der eigentliche
+Video-Export folgen in den naechsten Schritten.
 
 ## Konfiguration
 

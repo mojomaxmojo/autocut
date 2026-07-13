@@ -26,11 +26,31 @@ proxy_resolution: 480
 # (16-30 = deutlich beschleunigt statt hartem Schnitt).
 silent_speed: 20
 
+# Zeitfenster (Sekunden) fuer die Bucket-basierte Motion-/Audio-Analyse.
+# Kleinere Werte = feinere Aufloesung, aber mehr Rechenaufwand.
+bucket_window_sec: 5.0
+
 # Beat/Onset-Erkennung (aubio) mit Fallback auf Zeitraster, wenn zu
 # wenige klare Onsets gefunden werden (z.B. bei Videos ohne Musik).
 beats:
   min_onsets_for_beat_mode: 4
   fallback_grid_interval_sec: 4.0
+
+# Motion-Score via ffmpeg mpdecimate-Filter auf dem Proxy-Video.
+# hi/lo: Schwellenwerte fuer den Frame-Unterschied (je hoeher, desto
+# unempfindlicher). frac: Bruchteil der Pixel, die sich aendern muessen.
+# Diese Defaults entsprechen den ffmpeg-Standardwerten.
+motion:
+  hi: 768
+  lo: 320
+  frac: 0.33
+
+# Audio-Energie-Analyse via ffmpeg astats-Filter (RMS-Pegel in dB).
+# floor_db/ceil_db definieren den Bereich, der auf 0.0-1.0 normalisiert
+# wird (alles unter floor_db = 0.0, alles ueber ceil_db = 1.0).
+audio:
+  floor_db: -60.0
+  ceil_db: 0.0
 
 # Whisper.cpp Einstellungen (nur relevant ohne --no-ai)
 whisper:

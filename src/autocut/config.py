@@ -36,6 +36,22 @@ class BeatsConfig:
 
 
 @dataclass
+class MotionConfig:
+    # Parameter fuer den ffmpeg mpdecimate-Filter (Frame-Verwurf bei
+    # wenig Bewegung). Hoehere hi/lo-Werte = empfindlicher fuer Bewegung.
+    hi: int = 768
+    lo: int = 320
+    frac: float = 0.33
+
+
+@dataclass
+class AudioConfig:
+    # dB-Bereich zur Normalisierung des RMS-Pegels auf 0.0-1.0.
+    floor_db: float = -60.0
+    ceil_db: float = 0.0
+
+
+@dataclass
 class WhisperConfig:
     binary_path: str = "whisper.cpp/build/bin/whisper-cli"
     model_path: str = "whisper.cpp/models/ggml-small.bin"
@@ -77,7 +93,10 @@ class Config:
     buckets_per_minute: float = 0.5
     proxy_resolution: int = 480
     silent_speed: int = 20
+    bucket_window_sec: float = 5.0
     beats: BeatsConfig = field(default_factory=BeatsConfig)
+    motion: MotionConfig = field(default_factory=MotionConfig)
+    audio: AudioConfig = field(default_factory=AudioConfig)
     whisper: WhisperConfig = field(default_factory=WhisperConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
@@ -114,6 +133,8 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> Config:
 
     weights = _dict_to_dataclass(raw.get("weights"), Weights)
     beats = _dict_to_dataclass(raw.get("beats"), BeatsConfig)
+    motion = _dict_to_dataclass(raw.get("motion"), MotionConfig)
+    audio = _dict_to_dataclass(raw.get("audio"), AudioConfig)
     whisper = _dict_to_dataclass(raw.get("whisper"), WhisperConfig)
     llm = _dict_to_dataclass(raw.get("llm"), LlmConfig)
     output = _dict_to_dataclass(raw.get("output"), OutputConfig)
@@ -125,7 +146,10 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> Config:
         buckets_per_minute=raw.get("buckets_per_minute", 0.5),
         proxy_resolution=raw.get("proxy_resolution", 480),
         silent_speed=raw.get("silent_speed", 20),
+        bucket_window_sec=raw.get("bucket_window_sec", 5.0),
         beats=beats,
+        motion=motion,
+        audio=audio,
         whisper=whisper,
         llm=llm,
         output=output,
