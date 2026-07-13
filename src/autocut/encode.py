@@ -130,10 +130,21 @@ def render_reel(
     force_kf = f"expr:gte(t,n_forced*{keyframe_interval})"
 
     def _attempt(encoder: str) -> None:
+        # WICHTIG: "-fflags +genpts" und "-avoid_negative_ts make_zero"
+        # sind hier notwendig, weil die ffconcat-Datei mehrere
+        # inpoint/outpoint-Segmente aus verschiedenen Stellen der
+        # Originaldatei referenziert. Beim Zusammenfuegen entstehen
+        # dadurch "rueckwaerts springende" Zeitstempel (Non-monotonic
+        # DTS), die insbesondere den VAAPI-Treiber auf manchen Systemen
+        # (z.B. Broadwell-Generation) zum Absturz bringen koennen.
+        # "-fflags +genpts" laesst ffmpeg die Praesentationszeitstempel
+        # neu und durchgehend berechnen statt die kaputten Original-DTS
+        # zu uebernehmen.
         if encoder == "vaapi":
             vf = f"{crop_filter},format=nv12,hwupload"
             cmd = [
                 "ffmpeg", "-hide_banner", "-y",
+                "-fflags", "+genpts",
                 "-vaapi_device", "/dev/dri/renderD128",
                 "-f", "concat", "-safe", "0",
                 "-i", ffconcat_path,
@@ -141,17 +152,20 @@ def render_reel(
                 "-c:v", "h264_vaapi",
                 "-force_key_frames", force_kf,
                 "-c:a", "aac", "-b:a", "128k",
+                "-avoid_negative_ts", "make_zero",
                 output_path,
             ]
         else:
             cmd = [
                 "ffmpeg", "-hide_banner", "-y",
+                "-fflags", "+genpts",
                 "-f", "concat", "-safe", "0",
                 "-i", ffconcat_path,
                 "-vf", crop_filter,
                 *_video_encoder_args(encoder),
                 "-force_key_frames", force_kf,
                 "-c:a", "aac", "-b:a", "128k",
+                "-avoid_negative_ts", "make_zero",
                 output_path,
             ]
         _run(cmd, log)
