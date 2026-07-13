@@ -117,6 +117,16 @@ trotzdem vollstaendig durch - es wird nur eine Log-Warnung ausgegeben
 und automatisch auf ein gleichmaessiges Zeitraster bzw. keine
 Stille-Information zurueckgefallen (kein Absturz).
 
+**Hinweis zu auto-editor-Versionen:** Die auto-editor-CLI hat ihre
+Export-Flags mehrfach geaendert (aeltere Anleitungen nennen z.B.
+`--export json`, was in aktuellen Versionen mit `Unknown export format`
+fehlschlaegt). Dieses Tool nutzt das stabile `--export v1`-Format
+(https://auto-editor.com/docs/v1). Falls du eine sehr alte oder sehr
+neue auto-editor-Version installiert hast und trotzdem einen
+`Unknown export format`-Fehler siehst, pruefe mit
+`auto-editor --help | grep -A5 -- --export`, welche Formate deine
+Version unterstuetzt.
+
 ## Konfiguration
 
 Alle Schwellenwerte, Gewichte, Bucket-Anzahl, Modellauswahl etc. liegen

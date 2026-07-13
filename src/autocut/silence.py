@@ -3,18 +3,25 @@ FEATURE-PLAN.md).
 
 auto-editor markiert/beschleunigt stille Passagen, statt sie hart
 herauszuschneiden (silent_speed, Standard 16-30x statt hartem Cut). Wir
-nutzen den JSON-Timeline-Export von auto-editor, um die Zeitfenster zu
-bekommen, die als "still" (= beschleunigt) markiert wurden - diese
-Information dient in Schritt 4 dazu, Highlight-Segmente NICHT in
-stille Passagen zu legen bzw. Schnittkanten mit den Beat-Snap-Punkten
-zu verschmelzen.
+nutzen den v1-Timeline-Export von auto-editor (--export v1), um die
+Zeitfenster zu bekommen, die als "still" (= beschleunigt) markiert
+wurden - diese Information dient in Schritt 4 dazu, Highlight-Segmente
+NICHT in stille Passagen zu legen bzw. Schnittkanten mit den
+Beat-Snap-Punkten zu verschmelzen.
 
-WICHTIG: Die auto-editor CLI-Flags haben sich zwischen Versionen leicht
-veraendert. Diese Funktion ist deshalb bewusst defensiv geschrieben:
-schlaegt der Aufruf fehl oder laesst sich die Ausgabe nicht parsen, wird
-NUR eine Warnung geloggt und eine leere Liste zurueckgegeben - die
-Pipeline laeuft dann einfach ohne Stille-Information weiter (identisches
-Fallback-Prinzip wie bei den ffmpeg-Analysen in analyse.py).
+Das v1-Format ist dokumentiert unter https://auto-editor.com/docs/v1:
+{"version": "1", "source": "...", "chunks": [[start_frame, end_frame, speed], ...]}
+start/end sind in Frame-Einheiten der Quell-Framerate angegeben (nicht
+in Sekunden und nicht mit einer eigenen Timebase im File).
+
+WICHTIG: Die auto-editor CLI-Flags/Exportformate haben sich zwischen
+Versionen mehrfach veraendert (u.a. wurde "--export json" durch
+"--export v1"/"--export timeline:api=3" ersetzt). Diese Funktion ist
+deshalb bewusst defensiv geschrieben: schlaegt der Aufruf fehl oder
+laesst sich die Ausgabe nicht parsen, wird NUR eine Warnung geloggt und
+eine leere Liste zurueckgegeben - die Pipeline laeuft dann einfach ohne
+Stille-Information weiter (identisches Fallback-Prinzip wie bei den
+ffmpeg-Analysen in analyse.py).
 """
 
 from __future__ import annotations
@@ -26,6 +33,7 @@ import subprocess
 from pathlib import Path
 
 from .checkpoint import read_checkpoint, write_checkpoint
+from .ffmpeg_utils import get_avg_fps
 
 
 def _auto_editor_available(logger: logging.Logger) -> bool:
@@ -47,6 +55,7 @@ def run_auto_editor(
 ) -> list[dict]:
     """Ruft auto-editor auf, um stille Passagen zu erkennen, und gibt eine
     Liste von Segmenten zurueck: [{"start": float, "end": float, "silent": bool}, ...]
+    (start/end in Sekunden).
 
     Checkpoint-geprueft (silence.json im Cache-Verzeichnis). Bei jedem
     Fehler (Binary fehlt, Aufruf schlaegt fehl, Ausgabe nicht parsbar)
@@ -69,9 +78,8 @@ def run_auto_editor(
         "auto-editor",
         input_path,
         "--edit", "audio",
-        "--silent-speed", str(silent_speed),
-        "--video-speed", "1",
-        "--export", "json",
+        "--when-inactive", f"speed:{silent_speed}",
+        "--export", "v1",
         "--output", str(timeline_path),
         "--no-open",
     ]
@@ -97,17 +105,21 @@ def run_auto_editor(
         write_checkpoint(checkpoint_path, {"segments": []})
         return []
 
-    segments = _parse_timeline(timeline_path, silent_speed, log)
+    fps = get_avg_fps(input_path, log)
+    segments = _parse_v1_timeline(timeline_path, fps, log)
     write_checkpoint(checkpoint_path, {"segments": segments})
     log.info("Stille-Analyse abgeschlossen: %d Segment(e) erkannt.", len(segments))
     return segments
 
 
-def _parse_timeline(timeline_path: Path, silent_speed: float, logger: logging.Logger) -> list[dict]:
-    """Parst den JSON-Timeline-Export von auto-editor. Robust gegenueber
-    leicht unterschiedlichen Strukturen zwischen auto-editor-Versionen -
-    fehlt eine erwartete Struktur, wird einfach eine leere Liste
-    zurueckgegeben statt abzustuerzen.
+def _parse_v1_timeline(timeline_path: Path, fps: float, logger: logging.Logger) -> list[dict]:
+    """Parst den v1-Timeline-Export von auto-editor
+    ({"version": "1", "source": ..., "chunks": [[start_frame, end_frame, speed], ...]}).
+
+    start/end sind Frame-Nummern in der Quell-Framerate (fps-Parameter),
+    keine eigene Timebase im File. Robust gegenueber fehlenden/leeren
+    Dateien - gibt dann einfach eine leere Liste zurueck statt
+    abzustuerzen.
     """
     if not timeline_path.exists():
         logger.warning(
@@ -124,24 +136,20 @@ def _parse_timeline(timeline_path: Path, silent_speed: float, logger: logging.Lo
         logger.warning("Konnte auto-editor Timeline nicht lesen (%s) - ueberspringe.", exc)
         return []
 
+    chunks = data.get("chunks")
+    if not chunks:
+        logger.warning(
+            "Unerwartetes auto-editor v1-Timeline-Format (keine 'chunks' gefunden) - "
+            "ueberspringe Stille-Analyse."
+        )
+        return []
+
+    if fps <= 0:
+        logger.warning("Ungueltige Framerate (%.2f) fuer Timeline-Parsing - ueberspringe.", fps)
+        return []
+
+    segments = []
     try:
-        timebase = data.get("timebase", "30/1")
-        num, _, denom = timebase.partition("/")
-        fps = float(num) / float(denom) if denom else float(num)
-
-        chunks = None
-        if "v" in data and isinstance(data["v"], list) and data["v"]:
-            chunks = data["v"][0].get("chunks")
-        if chunks is None:
-            chunks = data.get("chunks")
-        if not chunks:
-            logger.warning(
-                "Unerwartetes auto-editor Timeline-Format (keine 'chunks' gefunden) - "
-                "ueberspringe Stille-Analyse."
-            )
-            return []
-
-        segments = []
         for chunk in chunks:
             start_frame, end_frame, speed = chunk[0], chunk[1], chunk[2]
             is_silent = float(speed) > 1.0
@@ -153,9 +161,9 @@ def _parse_timeline(timeline_path: Path, silent_speed: float, logger: logging.Lo
                 }
             )
         return segments
-    except (KeyError, IndexError, TypeError, ValueError, ZeroDivisionError) as exc:
+    except (IndexError, TypeError, ValueError) as exc:
         logger.warning(
-            "Konnte auto-editor Timeline nicht interpretieren (%s) - "
+            "Konnte auto-editor v1-Timeline nicht interpretieren (%s) - "
             "ueberspringe Stille-Analyse, Pipeline laeuft normal weiter.",
             exc,
         )

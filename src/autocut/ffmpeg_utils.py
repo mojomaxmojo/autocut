@@ -63,6 +63,32 @@ def probe_duration(path: str, logger: logging.Logger | None = None) -> float:
         raise FfmpegError(f"Unerwartete ffprobe-Ausgabe fuer {path}: {result.stdout!r}") from exc
 
 
+def get_avg_fps(path: str, logger: logging.Logger | None = None) -> float:
+    """Ermittelt die durchschnittliche Framerate eines Videos via ffprobe.
+    Faellt auf 25.0 zurueck, wenn das nicht bestimmt werden kann (z.B.
+    ungewoehnliches Containerformat) - lieber eine grobe Naeherung als
+    ein Absturz."""
+    log = logger or logging.getLogger("autocut")
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=avg_frame_rate",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        path,
+    ]
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    raw = result.stdout.strip()
+    try:
+        if "/" in raw:
+            num, denom = raw.split("/")
+            denom_f = float(denom)
+            return float(num) / denom_f if denom_f else 25.0
+        return float(raw)
+    except (ValueError, ZeroDivisionError):
+        log.debug("Konnte Framerate nicht bestimmen (%r) fuer %s, nutze Fallback 25.0", raw, path)
+        return 25.0
+
+
 def detect_hw_encoder(logger: logging.Logger | None = None) -> str:
     """Erkennt, welcher Hardware-Encoder auf diesem System verfuegbar ist.
 

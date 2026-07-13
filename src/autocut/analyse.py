@@ -17,7 +17,7 @@ from pathlib import Path
 from .beats import get_snap_points
 from .checkpoint import read_checkpoint, video_cache_dir, write_checkpoint
 from .config import Config
-from .ffmpeg_utils import probe_duration, run_ffmpeg
+from .ffmpeg_utils import get_avg_fps, probe_duration, run_ffmpeg
 from .parallel import run_parallel
 from .silence import merge_silence_with_snap, run_auto_editor
 
@@ -156,7 +156,7 @@ def motion_score(
         log.debug("Motion-Analyse: %d ueberlebende Frames gefunden", len(survived_timestamps))
 
         # Grobe Schaetzung der Proxy-Framerate fuer die Normalisierung.
-        fps_estimate = _estimate_fps(proxy_path, log)
+        fps_estimate = get_avg_fps(proxy_path, log)
 
         def normalize(vals: list[float], window: float) -> float:
             if window <= 0 or fps_estimate <= 0:
@@ -171,30 +171,6 @@ def motion_score(
     write_checkpoint(checkpoint_path, {"buckets": _buckets_to_json(buckets)})
     log.info("Motion-Score berechnet: %d Zeitfenster", len(buckets))
     return buckets
-
-
-def _estimate_fps(proxy_path: str, logger: logging.Logger) -> float:
-    """Ermittelt die durchschnittliche Framerate des Proxy-Videos via
-    ffprobe. Faellt auf 25.0 zurueck, falls das nicht ermittelt werden
-    kann (z.B. ungewoehnliches Containerformat)."""
-    cmd = [
-        "ffprobe", "-v", "error",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=avg_frame_rate",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        proxy_path,
-    ]
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
-    raw = result.stdout.strip()
-    try:
-        if "/" in raw:
-            num, denom = raw.split("/")
-            denom_f = float(denom)
-            return float(num) / denom_f if denom_f else 25.0
-        return float(raw)
-    except (ValueError, ZeroDivisionError):
-        logger.debug("Konnte Framerate nicht bestimmen (%r), nutze Fallback 25.0", raw)
-        return 25.0
 
 
 def audio_energy(
