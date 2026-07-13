@@ -1,10 +1,10 @@
 """CLI-Einstiegspunkt fuer das Autocut Highlight Tool.
 
 Laedt Konfiguration + .env, richtet Logging und RAM-Schutz ein und
-fuehrt die Analyse-Pipeline (Schritt 2: Proxy-Encode, Motion-Score,
-Audio-Energie) fuer die angegebene Datei aus. Weitere Pipeline-Schritte
-(Beat/Stille-Erkennung, Score-Fusion, Encoding/Export, optionale
-KI-Schritte) werden gemaess FEATURE-PLAN.md ergaenzt.
+fuehrt die komplette Analyse-Pipeline aus: Proxy-Encode, Motion-Score,
+Audio-Energie, Beat/Stille-Erkennung (Schritt 2/3), sowie Score-Fusion
+und Segmentauswahl mit Snap-to-Beat (Schritt 4). Encoding/Export und
+optionale KI-Schritte werden gemaess FEATURE-PLAN.md ergaenzt.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from .analyse import run_analysis
 from .config import Config, ConfigError, load_config, load_env
 from .logging_setup import setup_logging
 from .resources import set_soft_ram_limit, warn_if_high_memory
+from .scoring import build_edit_plan, fuse_scores, select_buckets
 
 
 def _parse_int_list(value: str) -> list[int]:
@@ -152,14 +153,29 @@ def main(
             return
         for index, video_path in enumerate(video_files, start=1):
             logger.info("--- Video %d/%d: %s ---", index, len(video_files), video_path.name)
-            _run_analysis_for_video(str(video_path), config, logger)
+            _run_analysis_for_video(str(video_path), config, logger, reel_lengths)
     else:
-        _run_analysis_for_video(input_path, config, logger)
+        _run_analysis_for_video(input_path, config, logger, reel_lengths)
 
 
-def _run_analysis_for_video(video_path: str, config: Config, logger: logging.Logger) -> None:
-    """Fuehrt die Analyse-Pipeline (Schritt 2) fuer ein einzelnes Video
-    aus und gibt eine kurze, verstaendliche Zusammenfassung aus."""
+def _format_hms(seconds: float) -> str:
+    """Formatiert Sekunden als HH:MM:SS fuer eine lesbare Konsolen-Ausgabe."""
+    total = int(round(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def _run_analysis_for_video(
+    video_path: str,
+    config: Config,
+    logger: logging.Logger,
+    reel_lengths: list[int],
+) -> None:
+    """Fuehrt die Analyse-Pipeline (Schritt 2/3) sowie Score-Fusion und
+    Segmentauswahl (Schritt 4) fuer ein einzelnes Video aus und gibt
+    eine kurze, verstaendliche Zusammenfassung aus. Der eigentliche
+    Video-Export folgt erst in Schritt 5."""
     result = run_analysis(video_path, config, logger)
     warn_if_high_memory(logger, config.resources.ram_warn_mb)
 
@@ -182,6 +198,30 @@ def _run_analysis_for_video(video_path: str, config: Config, logger: logging.Log
                 "    %6.1fs - %6.1fs: motion=%.2f audio=%s",
                 m.start, m.end, m.score, audio_score,
             )
+
+    # Score-Fusion (Schritt 4): noch ohne LLM-Scores (folgen in Schritt 7).
+    scored_windows = fuse_scores(
+        result.motion_buckets, result.audio_buckets, llm_scores=None, weights=config.weights
+    )
+    selected = select_buckets(scored_windows, result.duration, config.buckets_per_minute)
+    logger.info(
+        "  Segmentauswahl:   %d von %d Zeitfenstern ausgewaehlt (Buckets/Minute: %.2f)",
+        len(selected),
+        len(scored_windows),
+        config.buckets_per_minute,
+    )
+
+    for reel_length in reel_lengths:
+        edit_plan = build_edit_plan(selected, result.snap_points, float(reel_length))
+        total_selected = sum(end - start for start, end in edit_plan)
+        logger.info(
+            "  Edit-Plan fuer %ds-Reel: %d Segment(e), %.1fs Gesamtlaenge",
+            reel_length,
+            len(edit_plan),
+            total_selected,
+        )
+        for start, end in edit_plan:
+            logger.info("    %s - %s", _format_hms(start), _format_hms(end))
 
 
 cli = main

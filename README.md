@@ -6,10 +6,11 @@ offline (`--no-ai`); ein optionaler KI-Layer (lokale Transkription per
 whisper.cpp + Cloud-Free-Tier-LLM-Scoring) kann zusaetzlich aktiviert
 werden, wenn ein API-Key vorhanden ist.
 
-Der aktuelle Stand entspricht **Schritt 3** aus `FEATURE-PLAN.md`
+Der aktuelle Stand entspricht **Schritt 4** aus `FEATURE-PLAN.md`
 (Fundament + Proxy-Encode/Motion/Audio + Beat-Erkennung via aubio mit
-Zeitraster-Fallback + Stille-Grobschnitt via auto-editor). Score-Fusion
-und Encoding/Export folgen in den naechsten Schritten.
+Zeitraster-Fallback + Stille-Grobschnitt via auto-editor + Score-Fusion
+und Segmentauswahl mit Snap-to-Beat). Der eigentliche Video-Export
+(Encoding/Reels/Kurzclips) folgt in Schritt 5.
 
 Zielsystem: CachyOS (Arch-basiert), Lenovo ThinkPad T550, Intel
 Dual-Core CPU, Intel HD Graphics 5500 (iGPU, kein NVENC), 8-16 GB RAM.
@@ -116,6 +117,14 @@ Fehlen `aubio` oder `auto-editor` auf dem System, laeuft die Pipeline
 trotzdem vollstaendig durch - es wird nur eine Log-Warnung ausgegeben
 und automatisch auf ein gleichmaessiges Zeitraster bzw. keine
 Stille-Information zurueckgefallen (kein Absturz).
+
+Zusaetzlich wird jetzt fuer jede konfigurierte Reel-Laenge (`--lengths`,
+z.B. 60/90/120s) ein Edit-Plan berechnet: die Zeitfenster mit dem
+hoechsten fusionierten Score (motion+audio, proportional hochskaliert
+ohne KI) werden ueber die gesamte Videolaenge verteilt ausgewaehlt, auf
+die naechsten Beat/Pause-Snap-Punkte gezogen und in der Konsole als
+Zeitstempel-Liste (HH:MM:SS) ausgegeben. Der eigentliche Video-Export
+(echte MP4-Dateien schneiden) folgt erst in Schritt 5.
 
 **Hinweis zu auto-editor-Versionen:** Die auto-editor-CLI hat ihre
 Export-Flags mehrfach geaendert (aeltere Anleitungen nennen z.B.
