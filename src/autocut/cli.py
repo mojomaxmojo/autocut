@@ -3,10 +3,12 @@
 Laedt Konfiguration + .env, richtet Logging und RAM-Schutz ein und
 fuehrt die komplette Pipeline aus: Proxy-Encode, Motion-Score,
 Audio-Energie, Beat/Stille-Erkennung (Schritt 2/3), Score-Fusion und
-Segmentauswahl mit Snap-to-Beat (Schritt 4), sowie den Video-Export als
-Highlight-Reels + Kurzclips in mehreren Formaten (Schritt 5). Optionale
-KI-Schritte (Transkription, LLM-Scoring) werden gemaess
-FEATURE-PLAN.md ergaenzt.
+Segmentauswahl mit Snap-to-Beat (Schritt 4), Video-Export als
+Highlight-Reels + Kurzclips in mehreren Formaten (Schritt 5), optionale
+KI-Schritte Transkription + LLM-Scoring (Schritt 6/7). Akzeptiert als
+--input entweder eine einzelne Videodatei oder einen Ordner mit
+mehreren .mp4-Dateien, die dann sequenziell mit Gesamt-Fortschritts-
+anzeige und Fehlerisolation pro Video verarbeitet werden (Schritt 8).
 """
 
 from __future__ import annotations
@@ -158,11 +160,54 @@ def main(
         if not video_files:
             logger.warning("Keine .mp4-Dateien in %s gefunden.", input_path)
             return
-        for index, video_path in enumerate(video_files, start=1):
-            logger.info("--- Video %d/%d: %s ---", index, len(video_files), video_path.name)
-            _run_analysis_for_video(str(video_path), config, logger, reel_lengths, clip_lengths, no_ai, env)
+        _run_batch(video_files, config, logger, reel_lengths, clip_lengths, no_ai, env)
     else:
-        _run_analysis_for_video(input_path, config, logger, reel_lengths, clip_lengths, no_ai, env)
+        process_single_video(input_path, config, logger, reel_lengths, clip_lengths, no_ai, env)
+
+
+def _run_batch(
+    video_files: list[Path],
+    config: Config,
+    logger: logging.Logger,
+    reel_lengths: list[int],
+    clip_lengths: list[int],
+    no_ai: bool,
+    env: dict[str, str | None],
+) -> None:
+    """Verarbeitet mehrere Videos sequenziell (jedes Video nutzt intern
+    weiterhin die Parallelitaet aus Schritt 2 fuer seine eigenen
+    Analyse-Schritte). Ein Fehler bei einem Video bricht die
+    Batch-Verarbeitung NICHT ab - die restlichen Videos werden trotzdem
+    verarbeitet, und am Ende gibt es eine Gesamt-Zusammenfassung."""
+    total = len(video_files)
+    logger.info("Batch-Verarbeitung gestartet: %d Video(s) in der Warteschlange.", total)
+
+    succeeded: list[str] = []
+    failed: list[tuple[str, str]] = []
+
+    for index, video_path in enumerate(video_files, start=1):
+        logger.info("=" * 60)
+        logger.info("Verarbeite Video %d/%d: %s", index, total, video_path.name)
+        logger.info("=" * 60)
+        try:
+            process_single_video(str(video_path), config, logger, reel_lengths, clip_lengths, no_ai, env)
+        except Exception as exc:  # noqa: BLE001 - bewusst breit, damit ein
+            # einzelnes fehlerhaftes Video die restliche Batch-Verarbeitung
+            # nicht abbricht (Kernprinzip: robust auch bei unerwarteten
+            # Fehlern in einer einzelnen Datei, z.B. beschaedigtes Video).
+            logger.error("Video %d/%d fehlgeschlagen (%s): %s", index, total, video_path.name, exc)
+            failed.append((video_path.name, str(exc)))
+        else:
+            succeeded.append(video_path.name)
+        logger.info("Fortschritt: %d/%d Video(s) verarbeitet.", index, total)
+
+    logger.info("=" * 60)
+    logger.info("Batch-Verarbeitung abgeschlossen: %d/%d erfolgreich.", len(succeeded), total)
+    if failed:
+        logger.warning("%d Video(s) fehlgeschlagen:", len(failed))
+        for name, error in failed:
+            logger.warning("  - %s: %s", name, error)
+    logger.info("=" * 60)
 
 
 def _format_hms(seconds: float) -> str:
@@ -173,7 +218,7 @@ def _format_hms(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
-def _run_analysis_for_video(
+def process_single_video(
     video_path: str,
     config: Config,
     logger: logging.Logger,
@@ -186,7 +231,8 @@ def _run_analysis_for_video(
     Analyse (Schritt 2/3), optionale Transkription + LLM-Scoring
     (Schritt 6/7, nur wenn no_ai False ist), Score-Fusion/Segmentauswahl
     (Schritt 4) und Video-Export (Schritt 5: Reels + Kurzclips + mehrere
-    Formate)."""
+    Formate). Wird sowohl fuer Einzeldateien als auch (mehrfach) fuer
+    Batch-Verarbeitung eines ganzen Ordners (Schritt 8) aufgerufen."""
     result = run_analysis(video_path, config, logger)
     warn_if_high_memory(logger, config.resources.ram_warn_mb)
 

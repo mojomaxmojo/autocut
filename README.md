@@ -6,15 +6,15 @@ offline (`--no-ai`); ein optionaler KI-Layer (lokale Transkription per
 whisper.cpp + Cloud-Free-Tier-LLM-Scoring) kann zusaetzlich aktiviert
 werden, wenn ein API-Key vorhanden ist.
 
-Der aktuelle Stand entspricht **Schritt 7** aus `FEATURE-PLAN.md` -
-damit ist die komplette Kern-Pipeline inklusive optionalem KI-Layer
-fertig: Fundament + Proxy-Encode/Motion/Audio + Beat-Erkennung (aubio
-mit Zeitraster-Fallback) + Stille-Grobschnitt (auto-editor) +
-Score-Fusion und Segmentauswahl mit Snap-to-Beat + echter Video-Export
-(Reels, Kurzclips, mehrere Seitenverhaeltnisse) + optionale lokale
+Der aktuelle Stand entspricht **Schritt 8** aus `FEATURE-PLAN.md` -
+damit ist der komplette Ausbauplan fertig: Fundament +
+Proxy-Encode/Motion/Audio + Beat-Erkennung (aubio mit Zeitraster-
+Fallback) + Stille-Grobschnitt (auto-editor) + Score-Fusion und
+Segmentauswahl mit Snap-to-Beat + echter Video-Export (Reels,
+Kurzclips, mehrere Seitenverhaeltnisse) + optionale lokale
 Transkription via whisper.cpp + optionales LLM-Segment-Scoring
-(Groq/OpenRouter). Schritt 8 (Batch-Feinschliff) ist der letzte
-verbleibende Ausbauschritt.
+(Groq/OpenRouter) + Batch-Verarbeitung ganzer Ordner mit
+Gesamt-Fortschrittsanzeige und Fehlerisolation pro Video.
 
 Zielsystem: CachyOS (Arch-basiert), Lenovo ThinkPad T550, Intel
 Dual-Core CPU, Intel HD Graphics 5500 (iGPU, kein NVENC), 8-16 GB RAM.
@@ -93,11 +93,15 @@ LLM-Segment-Scoring.
 ## Benutzung
 
 ```bash
-# Komplett ohne KI (nur Motion-Score + Audio-Energie + Beat/Pause-Erkennung):
+# Einzelne Datei, komplett ohne KI (nur Motion-Score + Audio-Energie + Beat/Pause-Erkennung):
 python run.py --input ./videos/wohnmobil_tag3.mp4 --lengths 60,90,120 --clip-lengths 5,10,15 --no-ai
 
-# Mit KI-Scoring (wenn API_KEY in .env gesetzt ist):
+# Ganzer Ordner (Batch-Verarbeitung, Schritt 8), mit KI-Scoring wenn API_KEY in .env gesetzt ist:
 python run.py --input ./videos/ --lengths 60,90,120 --clip-lengths 5,10,15
+
+# Ganzer Ordner, komplett ohne KI (empfehlenswert bei Videos ohne durchgehenden
+# gesprochenen Kommentar, z.B. reine Landschafts-/Fahrrad-Aufnahmen):
+python run.py --input ./Videos/ --lengths 60,90,120 --clip-lengths 5,10,15 --no-ai
 
 # Nur Konfiguration pruefen, ohne etwas zu berechnen:
 python run.py --input ./videos/test.mp4 --no-ai --dry-run
@@ -105,6 +109,20 @@ python run.py --input ./videos/test.mp4 --no-ai --dry-run
 # Hilfe anzeigen:
 python run.py --help
 ```
+
+**Batch-Verarbeitung (Schritt 8):** Ist `--input` ein Ordner statt
+einer einzelnen Datei, werden alle `.mp4`/`.MP4`-Dateien darin
+sequenziell verarbeitet (jede Datei nutzt intern weiterhin die
+Parallelitaet aus Schritt 2 fuer ihre eigenen Analyse-Schritte). Die
+Konsole zeigt dabei eine Gesamt-Fortschrittsanzeige
+("Verarbeite Video 2/5: ..."). Schlaegt die Verarbeitung eines
+einzelnen Videos fehl (z.B. eine beschaedigte Datei), wird das
+protokolliert, die restlichen Videos im Ordner werden aber trotzdem
+weiterverarbeitet - am Ende gibt es eine Zusammenfassung, wie viele
+Videos erfolgreich waren und welche fehlgeschlagen sind. Checkpoints
+(Motion/Audio/Transkript etc.) gelten weiterhin pro Video, ein zweiter
+Lauf ueber denselben Ordner ist dadurch fuer bereits verarbeitete
+Dateien deutlich schneller.
 
 **Aktueller Funktionsumfang (Schritt 2/3):** Fuer jede Eingabedatei wird
 ein 480p-Proxy erzeugt (Original bleibt unveraendert), anschliessend
@@ -162,6 +180,16 @@ Zeitstempel pro Segment). Fehlt die whisper.cpp-Binary oder das
 Modell (siehe Installationsabschnitt oben), wird die Transkription
 automatisch uebersprungen - kein Fehler, nur eine Log-Warnung, die
 Pipeline laeuft normal bis zum Export durch.
+
+**Wann `--no-ai` sinnvoll ist:** Bei Videos ohne durchgehenden
+gesprochenen Kommentar (z.B. reine Landschafts-/Fahrrad-/Wohnmobil-
+Fahrt-Aufnahmen mit nur Umgebungsgeraeuschen) bringt der KI-Layer
+keinen Mehrwert - whisper.cpp hat nichts Sinnvolles zu transkribieren
+und das LLM nichts Sinnvolles zu bewerten. Nutze in diesem Fall
+`--no-ai`, das ist schneller und vermeidet unnoetige API-Calls sowie
+das unten beschriebene Halluzinationsrisiko. Der KI-Layer lohnt sich
+vor allem bei Videos mit aktivem gesprochenem Kommentar (z.B. "Wow,
+schau mal den Sonnenuntergang!", Ankunfts-Ansagen, Tierbeobachtungen).
 
 **Hinweis zu Halluzinationen/Wiederholungsschleifen:** Bei Audio ohne
 klare Sprache (Wind, Motorengeraeusche, Fahrradfahren) kann whisper.cpp
@@ -251,7 +279,7 @@ src/autocut/
 
 ## Ausbauplan
 
-Siehe `FEATURE-PLAN.md` fuer die vollstaendige, schrittweise Roadmap
-(Schritt 2: Motion/Audio-Analyse, Schritt 3: Beat/Stille-Erkennung,
-Schritt 4: Score-Fusion, Schritt 5: Encoding/Export, Schritt 6+7:
-optionaler KI-Layer, Schritt 8: Batch-Verarbeitung).
+Siehe `FEATURE-PLAN.md` fuer die vollstaendige, schrittweise Roadmap.
+Alle 8 geplanten Schritte sind umgesetzt (Fundament, Motion/Audio-
+Analyse, Beat/Stille-Erkennung, Score-Fusion, Encoding/Export,
+optionaler KI-Layer, Batch-Verarbeitung).

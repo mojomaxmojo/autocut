@@ -75,7 +75,7 @@ whisper:
   # Danach hier den Pfad eintragen, z.B.:
   #   vad_model_path: "whisper.cpp/models/ggml-silero-v6.2.0.bin"
   # Leer lassen (Standard), um VAD zu deaktivieren.
-  vad_model_path: ""
+  vad_model_path:"vad_model_path: "whisper.cpp/models/ggml-silero-v6.2.0.bin""
 
 # LLM-Segment-Scoring (nur relevant ohne --no-ai und mit API_KEY in .env)
 llm:

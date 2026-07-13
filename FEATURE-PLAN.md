@@ -521,11 +521,7 @@ Ordner gleichzeitig sichtbar.
 - [x] Schritt 5 — Encoding/Export: Reels (60/90/120s), Kurzclips (5/10/15s), 3 Seitenverhältnisse, HW-Encoder-Erkennung
 - [x] Schritt 6 — Optional: whisper.cpp-Transkription mit sauberem Fallback
 - [x] Schritt 7 — Optional: LLM-Segment-Scoring (Groq/OpenRouter) mit sauberem Fallback
-- [ ] Schritt 4 — Score-Fusion, Segmentauswahl über gesamte Videolänge, Snap-to-Beat
-- [ ] Schritt 5 — Encoding/Export: Reels (60/90/120s), Kurzclips (5/10/15s), 3 Seitenverhältnisse, HW-Encoder-Erkennung
-- [ ] Schritt 6 — Optional: whisper.cpp-Transkription mit sauberem Fallback
-- [ ] Schritt 7 — Optional: LLM-Segment-Scoring (Groq/OpenRouter) mit sauberem Fallback
-- [ ] Schritt 8 — Batch-Verarbeitung ganzer Ordner + Gesamt-Fortschrittsanzeige
+- [x] Schritt 8 — Batch-Verarbeitung ganzer Ordner + Gesamt-Fortschrittsanzeige
 
 Nach jedem abgehakten Schritt ist das Projekt vollständig lauffähig und
 kann per `python run.py --input ... --no-ai` (oder ohne `--no-ai`, ab
