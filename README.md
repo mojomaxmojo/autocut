@@ -6,13 +6,15 @@ offline (`--no-ai`); ein optionaler KI-Layer (lokale Transkription per
 whisper.cpp + Cloud-Free-Tier-LLM-Scoring) kann zusaetzlich aktiviert
 werden, wenn ein API-Key vorhanden ist.
 
-Der aktuelle Stand entspricht **Schritt 6** aus `FEATURE-PLAN.md`:
-Fundament + Proxy-Encode/Motion/Audio + Beat-Erkennung (aubio mit
-Zeitraster-Fallback) + Stille-Grobschnitt (auto-editor) + Score-Fusion
-und Segmentauswahl mit Snap-to-Beat + echter Video-Export (Reels,
-Kurzclips, mehrere Seitenverhaeltnisse) + optionale lokale
-Transkription via whisper.cpp. Das LLM-Segment-Scoring (Groq/OpenRouter)
-folgt in Schritt 7.
+Der aktuelle Stand entspricht **Schritt 7** aus `FEATURE-PLAN.md` -
+damit ist die komplette Kern-Pipeline inklusive optionalem KI-Layer
+fertig: Fundament + Proxy-Encode/Motion/Audio + Beat-Erkennung (aubio
+mit Zeitraster-Fallback) + Stille-Grobschnitt (auto-editor) +
+Score-Fusion und Segmentauswahl mit Snap-to-Beat + echter Video-Export
+(Reels, Kurzclips, mehrere Seitenverhaeltnisse) + optionale lokale
+Transkription via whisper.cpp + optionales LLM-Segment-Scoring
+(Groq/OpenRouter). Schritt 8 (Batch-Feinschliff) ist der letzte
+verbleibende Ausbauschritt.
 
 Zielsystem: CachyOS (Arch-basiert), Lenovo ThinkPad T550, Intel
 Dual-Core CPU, Intel HD Graphics 5500 (iGPU, kein NVENC), 8-16 GB RAM.
@@ -161,6 +163,18 @@ Modell (siehe Installationsabschnitt oben), wird die Transkription
 automatisch uebersprungen - kein Fehler, nur eine Log-Warnung, die
 Pipeline laeuft normal bis zum Export durch.
 
+**Optionales LLM-Segment-Scoring (Schritt 7):** Ist ein Transkript
+vorhanden UND ein `API_KEY` in `.env` gesetzt (Groq oder OpenRouter,
+siehe `.env.example`), wird jedes Transkript-Segment per Cloud-
+Free-Tier-LLM auf einer Skala 0-10 bewertet, wie "highlight-wuerdig"
+es fuer ein Reise-/Naturvideo ist (Ankunft, Wetter, Ausrufe, Tiere,
+Aussicht/Sonnenuntergang hoch; Fuellwoerter/Wiederholungen niedrig).
+Das Ergebnis fliesst in die Score-Fusion ein: `weights.llm` aus
+`config.yaml` bestimmt, wie stark der LLM-Score gegenueber
+motion/audio gewichtet wird. Fehlt der API_KEY, oder schlaegt ein
+Request fehl, wird automatisch auf motion+audio zurueckgefallen -
+kein Fehler, nur ein Log-Hinweis.
+
 **Hinweis zu auto-editor-Versionen:** Die auto-editor-CLI hat ihre
 Export-Flags mehrfach geaendert (aeltere Anleitungen nennen z.B.
 `--export json`, was in aktuellen Versionen mit `Unknown export format`
@@ -199,8 +213,7 @@ src/autocut/
   scoring.py                 # Score-Fusion, Segmentauswahl, Snap-to-Beat
   encode.py                  # Video-Export: Reels, Kurzclips, Formate
   transcribe.py               # Optionale Transkription via whisper.cpp
-  # weitere Module folgen laut FEATURE-PLAN.md:
-  # llm_scoring.py
+  llm_scoring.py              # Optionales LLM-Segment-Scoring (Groq/OpenRouter)
 ```
 
 ## Ausbauplan

@@ -21,6 +21,7 @@ from .checkpoint import video_cache_dir
 from .config import Config, ConfigError, load_config, load_env
 from .encode import export_all
 from .ffmpeg_utils import detect_hw_encoder
+from .llm_scoring import score_segments
 from .logging_setup import setup_logging
 from .resources import set_soft_ram_limit, warn_if_high_memory
 from .scoring import build_edit_plan, fuse_scores, select_buckets
@@ -159,9 +160,9 @@ def main(
             return
         for index, video_path in enumerate(video_files, start=1):
             logger.info("--- Video %d/%d: %s ---", index, len(video_files), video_path.name)
-            _run_analysis_for_video(str(video_path), config, logger, reel_lengths, clip_lengths, no_ai)
+            _run_analysis_for_video(str(video_path), config, logger, reel_lengths, clip_lengths, no_ai, env)
     else:
-        _run_analysis_for_video(input_path, config, logger, reel_lengths, clip_lengths, no_ai)
+        _run_analysis_for_video(input_path, config, logger, reel_lengths, clip_lengths, no_ai, env)
 
 
 def _format_hms(seconds: float) -> str:
@@ -179,11 +180,13 @@ def _run_analysis_for_video(
     reel_lengths: list[int],
     clip_lengths: list[int],
     no_ai: bool,
+    env: dict[str, str | None],
 ) -> None:
     """Fuehrt die komplette Pipeline fuer ein einzelnes Video aus:
-    Analyse (Schritt 2/3), optionale Transkription (Schritt 6, nur wenn
-    no_ai False ist), Score-Fusion/Segmentauswahl (Schritt 4) und
-    Video-Export (Schritt 5: Reels + Kurzclips + mehrere Formate)."""
+    Analyse (Schritt 2/3), optionale Transkription + LLM-Scoring
+    (Schritt 6/7, nur wenn no_ai False ist), Score-Fusion/Segmentauswahl
+    (Schritt 4) und Video-Export (Schritt 5: Reels + Kurzclips + mehrere
+    Formate)."""
     result = run_analysis(video_path, config, logger)
     warn_if_high_memory(logger, config.resources.ram_warn_mb)
 
@@ -229,12 +232,20 @@ def _run_analysis_for_video(
         else:
             logger.info("  Transkription:    keine (siehe Log-Warnung oben, falls whisper.cpp fehlt)")
 
-    # Score-Fusion (Schritt 4): LLM-Scoring (Schritt 7) fehlt noch, daher
-    # weiterhin llm_scores=None - Transkript-Text wird aktuell nur zur
-    # Anzeige genutzt, das eigentliche Bewerten der Segmente folgt in
-    # Schritt 7.
+    # Optionales LLM-Segment-Scoring (Schritt 7) - nur wenn --no-ai
+    # NICHT gesetzt ist UND ein Transkript vorhanden ist. Liefert None
+    # bei fehlendem API_KEY oder wenn alle Requests fehlschlagen - die
+    # Pipeline laeuft dann ohne LLM-Score weiter (kein Absturz, nur ein
+    # Log-Hinweis, der bereits in score_segments() ausgegeben wurde).
+    llm_scores: list[dict] | None = None
+    if not no_ai and transcript_segments:
+        llm_scores = score_segments(transcript_segments, env, config.llm, logger)
+
+    # Score-Fusion (Schritt 4): motion+audio, optional angereichert um
+    # den LLM-Score pro Zeitfenster (llm_scores=None faellt automatisch
+    # auf proportional hochskalierte motion+audio Gewichte zurueck).
     scored_windows = fuse_scores(
-        result.motion_buckets, result.audio_buckets, llm_scores=None, weights=config.weights
+        result.motion_buckets, result.audio_buckets, llm_scores=llm_scores, weights=config.weights
     )
     selected = select_buckets(scored_windows, result.duration, config.buckets_per_minute)
     logger.info(
