@@ -24,6 +24,7 @@ from .ffmpeg_utils import detect_hw_encoder
 from .logging_setup import setup_logging
 from .resources import set_soft_ram_limit, warn_if_high_memory
 from .scoring import build_edit_plan, fuse_scores, select_buckets
+from .transcribe import transcribe
 
 
 def _parse_int_list(value: str) -> list[int]:
@@ -158,9 +159,9 @@ def main(
             return
         for index, video_path in enumerate(video_files, start=1):
             logger.info("--- Video %d/%d: %s ---", index, len(video_files), video_path.name)
-            _run_analysis_for_video(str(video_path), config, logger, reel_lengths, clip_lengths)
+            _run_analysis_for_video(str(video_path), config, logger, reel_lengths, clip_lengths, no_ai)
     else:
-        _run_analysis_for_video(input_path, config, logger, reel_lengths, clip_lengths)
+        _run_analysis_for_video(input_path, config, logger, reel_lengths, clip_lengths, no_ai)
 
 
 def _format_hms(seconds: float) -> str:
@@ -177,9 +178,11 @@ def _run_analysis_for_video(
     logger: logging.Logger,
     reel_lengths: list[int],
     clip_lengths: list[int],
+    no_ai: bool,
 ) -> None:
     """Fuehrt die komplette Pipeline fuer ein einzelnes Video aus:
-    Analyse (Schritt 2/3), Score-Fusion/Segmentauswahl (Schritt 4) und
+    Analyse (Schritt 2/3), optionale Transkription (Schritt 6, nur wenn
+    no_ai False ist), Score-Fusion/Segmentauswahl (Schritt 4) und
     Video-Export (Schritt 5: Reels + Kurzclips + mehrere Formate)."""
     result = run_analysis(video_path, config, logger)
     warn_if_high_memory(logger, config.resources.ram_warn_mb)
@@ -204,7 +207,32 @@ def _run_analysis_for_video(
                 m.start, m.end, m.score, audio_score,
             )
 
-    # Score-Fusion (Schritt 4): noch ohne LLM-Scores (folgen in Schritt 7).
+    # Optionale Transkription (Schritt 6) - nur wenn --no-ai NICHT
+    # gesetzt ist. Liefert None bei fehlendem whisper.cpp/Modell oder
+    # Fehler waehrend des Aufrufs - die Pipeline laeuft dann exakt wie
+    # im --no-ai Modus weiter (kein Absturz, nur eine Log-Warnung, die
+    # bereits in transcribe() ausgegeben wurde).
+    transcript_segments: list[dict] | None = None
+    if no_ai:
+        logger.info("  Transkription:    uebersprungen (--no-ai gesetzt)")
+    else:
+        cache_dir_for_transcript = video_cache_dir(video_path, config.paths.cache_dir)
+        transcript_segments = transcribe(video_path, config.whisper, cache_dir_for_transcript, logger)
+        if transcript_segments:
+            logger.info("  Transkription:    %d Segment(e)", len(transcript_segments))
+            preview = transcript_segments[: min(3, len(transcript_segments))]
+            for seg in preview:
+                logger.info(
+                    "    %6.1fs - %6.1fs: %s",
+                    seg["start"], seg["end"], seg["text"],
+                )
+        else:
+            logger.info("  Transkription:    keine (siehe Log-Warnung oben, falls whisper.cpp fehlt)")
+
+    # Score-Fusion (Schritt 4): LLM-Scoring (Schritt 7) fehlt noch, daher
+    # weiterhin llm_scores=None - Transkript-Text wird aktuell nur zur
+    # Anzeige genutzt, das eigentliche Bewerten der Segmente folgt in
+    # Schritt 7.
     scored_windows = fuse_scores(
         result.motion_buckets, result.audio_buckets, llm_scores=None, weights=config.weights
     )

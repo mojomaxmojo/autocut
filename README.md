@@ -6,12 +6,13 @@ offline (`--no-ai`); ein optionaler KI-Layer (lokale Transkription per
 whisper.cpp + Cloud-Free-Tier-LLM-Scoring) kann zusaetzlich aktiviert
 werden, wenn ein API-Key vorhanden ist.
 
-Der aktuelle Stand entspricht **Schritt 5** aus `FEATURE-PLAN.md`:
+Der aktuelle Stand entspricht **Schritt 6** aus `FEATURE-PLAN.md`:
 Fundament + Proxy-Encode/Motion/Audio + Beat-Erkennung (aubio mit
 Zeitraster-Fallback) + Stille-Grobschnitt (auto-editor) + Score-Fusion
 und Segmentauswahl mit Snap-to-Beat + echter Video-Export (Reels,
-Kurzclips, mehrere Seitenverhaeltnisse). Der optionale KI-Layer
-(Transkription + LLM-Scoring) folgt in Schritt 6/7.
+Kurzclips, mehrere Seitenverhaeltnisse) + optionale lokale
+Transkription via whisper.cpp. Das LLM-Segment-Scoring (Groq/OpenRouter)
+folgt in Schritt 7.
 
 Zielsystem: CachyOS (Arch-basiert), Lenovo ThinkPad T550, Intel
 Dual-Core CPU, Intel HD Graphics 5500 (iGPU, kein NVENC), 8-16 GB RAM.
@@ -147,6 +148,18 @@ Geraet `/dev/dri/renderD128`. Hat dein System mehrere GPUs/Render-Nodes
 automatisch auf `libx264` (Software) zurueck - du verlierst dadurch
 keine Funktionalitaet, nur etwas Geschwindigkeit. Mit `vainfo` kannst
 du pruefen, welches Geraet auf deinem System die HD Graphics 5500 ist.
+Bekanntes, harmloses Verhalten auf aelteren Intel-iGPUs (Broadwell):
+ffmpeg kann NACH erfolgreichem Encodieren beim Aufraeumen der
+VAAPI-Ressourcen abstuerzen (`free(): invalid pointer`) - das Tool
+erkennt diesen Fall und wertet die bereits vollstaendig geschriebene
+Ausgabedatei trotzdem als Erfolg (kein unnoetiger Re-Encode).
+
+**Optionale Transkription (Schritt 6):** Ohne `--no-ai` wird das Audio
+jeder Datei lokal per whisper.cpp transkribiert (deutsches Modell,
+Zeitstempel pro Segment). Fehlt die whisper.cpp-Binary oder das
+Modell (siehe Installationsabschnitt oben), wird die Transkription
+automatisch uebersprungen - kein Fehler, nur eine Log-Warnung, die
+Pipeline laeuft normal bis zum Export durch.
 
 **Hinweis zu auto-editor-Versionen:** Die auto-editor-CLI hat ihre
 Export-Flags mehrfach geaendert (aeltere Anleitungen nennen z.B.
@@ -185,8 +198,9 @@ src/autocut/
   silence.py                 # Stille-Erkennung (auto-editor)
   scoring.py                 # Score-Fusion, Segmentauswahl, Snap-to-Beat
   encode.py                  # Video-Export: Reels, Kurzclips, Formate
+  transcribe.py               # Optionale Transkription via whisper.cpp
   # weitere Module folgen laut FEATURE-PLAN.md:
-  # transcribe.py, llm_scoring.py
+  # llm_scoring.py
 ```
 
 ## Ausbauplan

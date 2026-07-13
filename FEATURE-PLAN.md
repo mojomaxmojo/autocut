@@ -519,6 +519,7 @@ Ordner gleichzeitig sichtbar.
 - [x] Schritt 3 — Beat/Pause-Erkennung (aubio + Fallback), Stille-Grobschnitt (auto-editor)
 - [x] Schritt 4 — Score-Fusion, Segmentauswahl über gesamte Videolänge, Snap-to-Beat
 - [x] Schritt 5 — Encoding/Export: Reels (60/90/120s), Kurzclips (5/10/15s), 3 Seitenverhältnisse, HW-Encoder-Erkennung
+- [x] Schritt 6 — Optional: whisper.cpp-Transkription mit sauberem Fallback
 - [ ] Schritt 4 — Score-Fusion, Segmentauswahl über gesamte Videolänge, Snap-to-Beat
 - [ ] Schritt 5 — Encoding/Export: Reels (60/90/120s), Kurzclips (5/10/15s), 3 Seitenverhältnisse, HW-Encoder-Erkennung
 - [ ] Schritt 6 — Optional: whisper.cpp-Transkription mit sauberem Fallback
