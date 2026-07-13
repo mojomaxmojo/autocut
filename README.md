@@ -38,20 +38,32 @@ pip install --user auto-editor
 
 ### 2. Optional: whisper.cpp (nur fuer den KI-Modus)
 
-```bash
-# per AUR, falls verfuegbar:
-yay -S whisper.cpp
+**Wichtig:** Im AUR gibt es aktuell nur drei whisper.cpp-Varianten
+(`whisper.cpp-cuda`, `whisper.cpp-cuda-bin`, `whisper.cpp-openvino`) -
+alle drei setzen entweder eine NVIDIA-GPU (CUDA) voraus oder ziehen das
+schwergewichtige OpenVINO-Laufzeitpaket mit, dessen GPU-Beschleunigung
+auf der Broadwell-iGPU (HD Graphics 5500) ohnehin meist nicht greift.
+**Keine dieser AUR-Pakete auswaehlen** - stattdessen manuell bauen
+(reiner CPU-Pfad, schlank, keine unnoetigen Abhaengigkeiten):
 
-# oder manuell:
+```bash
+# Falls noch nicht vorhanden: Build-Werkzeuge installieren
+sudo pacman -S cmake base-devel
+
 git clone https://github.com/ggerganov/whisper.cpp
 cd whisper.cpp
 make
 bash ./models/download-ggml-model.sh small
 ```
 
-Pfade zu Binary und Modell danach in `config.yaml` unter `whisper:`
-eintragen. Ist whisper.cpp nicht vorhanden, laeuft das Tool trotzdem
-weiter - nur ohne Transkription (Log-Warnung, kein Fehler).
+Nach dem Build liegt die Binary unter `whisper.cpp/build/bin/` (Name je
+Version z.B. `whisper-cli` oder `main`) und das Modell unter
+`whisper.cpp/models/ggml-small.bin` - das entspricht bereits den
+Default-Pfaden in `config.yaml`. Falls bei dir andere Pfade entstehen,
+in `config.yaml` unter `whisper:` anpassen.
+
+Ist whisper.cpp nicht vorhanden oder der Pfad falsch, laeuft das Tool
+trotzdem weiter - nur ohne Transkription (Log-Warnung, kein Fehler).
 
 ### 3. Python-Umgebung
 
