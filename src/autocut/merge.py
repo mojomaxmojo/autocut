@@ -45,11 +45,39 @@ def _build_concat_list(video_paths: list[str], cache_dir: Path) -> str:
     return str(list_path)
 
 
+def _validate_playable(path: Path, logger: logging.Logger) -> bool:
+    """Prueft, ob eine Videodatei tatsaechlich fehlerfrei decodierbar ist.
+
+    WICHTIG: ffmpeg meldet beim reinen Stream-Copy-Merge (-c copy) einen
+    Exit-Code 0, auch wenn die erzeugte Datei spaeter beim Decodieren
+    fehlschlaegt (z.B. "Invalid data found when processing input",
+    HEVC-Decodierfehler) - das passiert, wenn die Quell-Videos zwar
+    denselben Codec/dieselbe Aufloesung haben, aber leicht
+    unterschiedliche Bitstream-Parameter (z.B. SPS/PPS bei HEVC von
+    verschiedenen Aufnahmen derselben Handy-Kamera-App). Deshalb wird
+    hier NACH dem Stream-Copy-Merge zusaetzlich ein kompletter
+    Decodier-Durchlauf erzwungen, um solche "silent corruption"-Faelle
+    zuverlaessig zu erkennen.
+    """
+    result = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-v", "error", "-i", str(path), "-f", "null", "-"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0 or result.stderr.strip():
+        logger.debug("Validierung der zusammengefuegten Datei fehlgeschlagen: %s", result.stderr[-1000:])
+        return False
+    return True
+
+
 def _try_stream_copy_merge(list_path: str, output_path: Path, logger: logging.Logger) -> bool:
-    """Versucht das schnelle Stream-Copy-Merge (kein Re-Encode). Gibt
-    True bei Erfolg zurueck, False wenn es fehlgeschlagen ist (dann
-    faellt der Aufrufer auf den langsameren, robusteren Filter-Merge
-    zurueck)."""
+    """Versucht das schnelle Stream-Copy-Merge (kein Re-Encode) UND
+    validiert danach, ob die erzeugte Datei tatsaechlich fehlerfrei
+    decodierbar ist (siehe _validate_playable). Gibt True nur bei
+    echtem Erfolg zurueck - sonst faellt der Aufrufer auf den
+    langsameren, robusteren Filter-Merge zurueck."""
     try:
         run_ffmpeg(
             [
@@ -60,7 +88,6 @@ def _try_stream_copy_merge(list_path: str, output_path: Path, logger: logging.Lo
             ],
             logger=logger,
         )
-        return True
     except FfmpegError:
         logger.warning(
             "Schnelles Stream-Copy-Merge fehlgeschlagen (vermutlich unterschiedliche "
@@ -68,6 +95,17 @@ def _try_stream_copy_merge(list_path: str, output_path: Path, logger: logging.Lo
             "Re-Encode-Merge zurueck (langsamer, aber robuster)."
         )
         return False
+
+    if not _validate_playable(output_path, logger):
+        logger.warning(
+            "Stream-Copy-Merge ergab eine beschaedigte Datei (Bitstream-Inkompatibilitaet "
+            "zwischen den Quell-Videos, z.B. unterschiedliche SPS/PPS-Parameter bei HEVC) - "
+            "falle auf Re-Encode-Merge zurueck (langsamer, aber robuster)."
+        )
+        output_path.unlink(missing_ok=True)
+        return False
+
+    return True
 
 
 def _filter_merge(video_paths: list[str], output_path: Path, logger: logging.Logger) -> None:
@@ -144,11 +182,18 @@ def merge_videos(
     output_path = cache_dir / "merged.mp4"
 
     if output_path.exists() and output_path.stat().st_size > 0:
-        log.info(
-            "Zusammengefuegtes Video bereits vorhanden, ueberspringe Neuerstellung: %s",
+        if _validate_playable(output_path, log):
+            log.info(
+                "Zusammengefuegtes Video bereits vorhanden, ueberspringe Neuerstellung: %s",
+                output_path,
+            )
+            return str(output_path)
+        log.warning(
+            "Bereits vorhandene zusammengefuegte Datei ist beschaedigt (%s) - "
+            "wird verworfen und neu erzeugt.",
             output_path,
         )
-        return str(output_path)
+        output_path.unlink(missing_ok=True)
 
     log.info(
         "Fuege %d Videos zu einem durchgehenden Stream zusammen (Reihenfolge: %s) ...",
