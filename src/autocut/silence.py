@@ -69,8 +69,11 @@ def run_auto_editor(
         log.info("Stille-Analyse bereits vorhanden, ueberspringe Neuberechnung.")
         return cached["segments"]
 
+    # WICHTIG: "nicht verfuegbar" (Binary fehlt) wird bewusst NICHT
+    # gecacht, damit ein spaeterer Lauf nach Installation von
+    # auto-editor die Stille-Analyse automatisch nachholt, statt
+    # dauerhaft einen alten "leer"-Checkpoint wiederzuverwenden.
     if not _auto_editor_available(log):
-        write_checkpoint(checkpoint_path, {"segments": []})
         return []
 
     timeline_path = cache_dir / "auto_editor_timeline.json"
@@ -92,7 +95,6 @@ def run_auto_editor(
         )
     except OSError as exc:
         log.warning("auto-editor konnte nicht ausgefuehrt werden (%s) - ueberspringe.", exc)
-        write_checkpoint(checkpoint_path, {"segments": []})
         return []
 
     if result.returncode != 0:
@@ -102,7 +104,6 @@ def run_auto_editor(
             result.returncode,
             (result.stderr or result.stdout)[-1500:],
         )
-        write_checkpoint(checkpoint_path, {"segments": []})
         return []
 
     fps = get_avg_fps(input_path, log)

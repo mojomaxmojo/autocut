@@ -143,13 +143,18 @@ def transcribe(
         log.info("Transkript bereits vorhanden, ueberspringe Neuberechnung.")
         return cached["segments"] if cached["segments"] else None
 
+    # WICHTIG: "nicht verfuegbar" (Binary/Modell fehlt, keine Audiospur)
+    # wird bewusst NICHT gecacht. Sonst wuerde ein spaeterer Lauf, bei
+    # dem whisper.cpp inzwischen korrekt installiert wurde, faelschlich
+    # den alten "nicht verfuegbar"-Checkpoint wiederverwenden und nie
+    # wieder eine echte Transkription versuchen. Nur ein tatsaechlich
+    # DURCHGEFUEHRTER Versuch (erfolgreich oder mit ffmpeg/whisper.cpp-
+    # Laufzeitfehler) wird als Checkpoint persistiert.
     if not whisper_available(config, log):
-        write_checkpoint(checkpoint_path, {"segments": []})
         return None
 
     wav_path = _extract_audio_for_whisper(input_path, cache_dir, log)
     if wav_path is None:
-        write_checkpoint(checkpoint_path, {"segments": []})
         return None
 
     output_prefix = cache_dir / "transcript"
@@ -171,7 +176,9 @@ def transcribe(
         )
     except OSError as exc:
         log.warning("whisper.cpp konnte nicht ausgefuehrt werden (%s) - ueberspringe Transkription.", exc)
-        write_checkpoint(checkpoint_path, {"segments": []})
+        # Kein Checkpoint bei Laufzeitfehlern - ein erneuter Versuch
+        # koennte spaeter erfolgreich sein (z.B. nach Beheben eines
+        # RAM-Engpasses auf schwacher Hardware).
         return None
 
     if result.returncode != 0:
@@ -181,7 +188,6 @@ def transcribe(
             result.returncode,
             (result.stderr or result.stdout)[-1500:],
         )
-        write_checkpoint(checkpoint_path, {"segments": []})
         return None
 
     json_path = Path(f"{output_prefix}.json")
