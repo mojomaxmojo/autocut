@@ -65,6 +65,47 @@ def _run(cmd: list[str], logger: logging.Logger) -> None:
         raise FfmpegError(f"ffmpeg-Aufruf fehlgeschlagen (Exit-Code {result.returncode})")
 
 
+def _run_encode(cmd: list[str], output_path: str, logger: logging.Logger) -> None:
+    """Wie _run(), aber mit einer Sonderbehandlung fuer ein bekanntes
+    VAAPI/Mesa-Stabilitaetsproblem auf aelteren Intel-iGPUs (z.B.
+    Broadwell/HD Graphics 5500): der ffmpeg-Prozess kann NACH dem
+    erfolgreichen Schreiben der Ausgabedatei beim Aufraeumen der
+    VAAPI-Ressourcen abstuerzen (Exit-Code -6/SIGABRT,
+    "free(): invalid pointer"), obwohl die Datei bereits vollstaendig
+    und korrekt fertig encodiert wurde ("muxing overhead" wurde bereits
+    geloggt). Ohne diese Sonderbehandlung wuerde das Reel unnoetig ein
+    zweites Mal mit libx264 encodiert werden - reine Verschwendung von
+    Rechenzeit auf einem Dual-Core-System.
+
+    Ein Erfolg wird akzeptiert, wenn: der Exit-Code negativ ist (vom
+    Signal getoetet, kein regulaerer ffmpeg-Fehler), UND "muxing
+    overhead" im Log auftaucht (= Muxing wurde abgeschlossen), UND die
+    Ausgabedatei existiert und nicht leer ist.
+    """
+    logger.debug("ffmpeg-Aufruf: %s", " ".join(cmd))
+    result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False)
+    if result.returncode == 0:
+        return
+
+    out_path = Path(output_path)
+    muxing_completed = "muxing overhead" in result.stderr
+    file_ready = out_path.exists() and out_path.stat().st_size > 0
+
+    if result.returncode < 0 and muxing_completed and file_ready:
+        logger.warning(
+            "ffmpeg wurde nach erfolgreichem Encodieren durch ein Signal beendet "
+            "(Exit-Code %d, bekanntes VAAPI/Mesa-Stabilitaetsproblem beim Aufraeumen "
+            "auf aelteren Intel-iGPUs) - die Ausgabedatei ist aber vollstaendig und "
+            "korrekt, wird als Erfolg gewertet: %s",
+            result.returncode,
+            output_path,
+        )
+        return
+
+    logger.error("ffmpeg-Fehler (Exit-Code %d): %s", result.returncode, result.stderr[-4000:])
+    raise FfmpegError(f"ffmpeg-Aufruf fehlgeschlagen (Exit-Code {result.returncode})")
+
+
 def build_ffconcat(
     edit_plan: list[tuple[float, float]],
     input_path: str,
@@ -168,7 +209,7 @@ def render_reel(
                 "-avoid_negative_ts", "make_zero",
                 output_path,
             ]
-        _run(cmd, log)
+        _run_encode(cmd, output_path, log)
 
     used_encoder = hw_encoder
     try:
