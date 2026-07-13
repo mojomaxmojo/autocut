@@ -163,6 +163,29 @@ Modell (siehe Installationsabschnitt oben), wird die Transkription
 automatisch uebersprungen - kein Fehler, nur eine Log-Warnung, die
 Pipeline laeuft normal bis zum Export durch.
 
+**Hinweis zu Halluzinationen/Wiederholungsschleifen:** Bei Audio ohne
+klare Sprache (Wind, Motorengeraeusche, Fahrradfahren) kann whisper.cpp
+in eine Schleife geraten und denselben (meist falschen) Satz viele Male
+identisch wiederholen. Das Tool setzt standardmaessig `--max-context 0`
+(keine Kontextuebernahme zwischen Segmenten) und einen erhoehten
+`--entropy-thold 2.6`, um das zu reduzieren (beide in `config.yaml`
+unter `whisper:` einstellbar). Fuer eine noch robustere Loesung kannst
+du zusaetzlich VAD (Voice Activity Detection) aktivieren, die
+Nicht-Sprache-Abschnitte bereits vor der Transkription herausfiltert:
+
+```bash
+cd whisper.cpp
+bash ./models/download-vad-model.sh silero-v6.2.0
+```
+
+Danach in `config.yaml` unter `whisper:` eintragen:
+```yaml
+vad_model_path: "whisper.cpp/models/ggml-silero-v6.2.0.bin"
+```
+
+Ohne `vad_model_path` (Standard: leer) laeuft die Transkription normal
+weiter, nur ohne VAD-Vorfilterung.
+
 **Optionales LLM-Segment-Scoring (Schritt 7):** Ist ein Transkript
 vorhanden UND ein `API_KEY` in `.env` gesetzt (Groq oder OpenRouter,
 siehe `.env.example`), wird jedes Transkript-Segment per Cloud-

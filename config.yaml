@@ -63,6 +63,19 @@ whisper:
   binary_path: "whisper.cpp/build/bin/whisper-cli"
   model_path: "whisper.cpp/models/ggml-small.bin"
   language: "de"
+  # Gegenmassnahmen gegen bekannte Halluzinations-/Wiederholungsschleifen
+  # (z.B. bei Windgeraeuschen, Motor, Fahrradfahren ohne echte Sprache -
+  # das Modell "verhaengt" sich sonst in einem staendig wiederholten Satz).
+  max_context: 0
+  entropy_threshold: 2.6
+  # Optionale VAD (Voice Activity Detection): filtert Nicht-Sprache
+  # bereits VOR der Transkription heraus, reduziert Halluzinationen
+  # zusaetzlich. Erfordert ein separates Modell:
+  #   cd whisper.cpp && bash ./models/download-vad-model.sh silero-v6.2.0
+  # Danach hier den Pfad eintragen, z.B.:
+  #   vad_model_path: "whisper.cpp/models/ggml-silero-v6.2.0.bin"
+  # Leer lassen (Standard), um VAD zu deaktivieren.
+  vad_model_path: ""
 
 # LLM-Segment-Scoring (nur relevant ohne --no-ai und mit API_KEY in .env)
 llm:

@@ -166,7 +166,23 @@ def transcribe(
         "--output-json",
         "--output-file", str(output_prefix),
         "--no-prints",
+        # Gegenmassnahmen gegen bekannte Halluzinations-/
+        # Wiederholungsschleifen (siehe config.py WhisperConfig
+        # fuer Erklaerung).
+        "--max-context", str(config.max_context),
+        "--entropy-thold", str(config.entropy_threshold),
     ]
+    if config.vad_model_path:
+        vad_path = Path(config.vad_model_path)
+        if vad_path.exists():
+            cmd += ["--vad", "--vad-model", str(vad_path)]
+            log.debug("VAD aktiviert mit Modell: %s", vad_path)
+        else:
+            log.warning(
+                "VAD-Modell nicht gefunden unter '%s' - fahre ohne VAD fort. "
+                "Siehe README.md fuer den Download-Befehl.",
+                vad_path,
+            )
     log.info("Starte whisper.cpp-Transkription (Sprache: %s, Modell: %s) ...", config.language, config.model_path)
     log.debug("whisper.cpp-Aufruf: %s", " ".join(cmd))
 

@@ -64,6 +64,20 @@ class WhisperConfig:
     binary_path: str = "whisper.cpp/build/bin/whisper-cli"
     model_path: str = "whisper.cpp/models/ggml-small.bin"
     language: str = "de"
+    # Gegenmassnahmen gegen bekannte whisper.cpp-Halluzinations-/
+    # Wiederholungsschleifen (typisch bei Nicht-Sprache-Geraeuschen wie
+    # Wind/Motor/Fahrradfahren): max_context=0 deaktiviert die
+    # Kontextuebernahme zwischen Segmenten, ein hoeherer
+    # entropy_threshold laesst das Modell bei unsicherer/sich
+    # wiederholender Vorhersage eher neu ansetzen statt in der Schleife
+    # zu bleiben. Siehe https://github.com/ggml-org/whisper.cpp/discussions/2286
+    max_context: int = 0
+    entropy_threshold: float = 2.6
+    # Optionale VAD (Voice Activity Detection) - filtert Nicht-Sprache
+    # VOR der Transkription heraus und reduziert Halluzinationen
+    # zusaetzlich. Erfordert ein separates VAD-Modell (siehe README.md).
+    # Leer lassen, um VAD zu deaktivieren.
+    vad_model_path: str = ""
 
 
 @dataclass
