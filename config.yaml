@@ -1,0 +1,64 @@
+# Autocut Highlight CLI - Konfiguration
+# Alle Schwellenwerte/Gewichte/Optionen zentral hier, kein Hardcoding im Code.
+
+# Gewichte fuer die Score-Fusion (Schritt 4).
+# Wichtig: bei ruhigem Reise-/Landschafts-Content zaehlen audio_energy
+# und llm_score staerker als motion_score, weil Bewegung bei
+# Landschaftsaufnahmen kein guter Indikator fuer Highlights ist.
+# Wenn kein LLM-Score verfuegbar ist (z.B. --no-ai oder kein API_KEY),
+# werden motion+audio automatisch proportional hochskaliert, sodass die
+# Summe weiterhin 1.0 ergibt.
+weights:
+  motion: 0.2
+  audio: 0.4
+  llm: 0.4
+
+# Wie viele Highlight-Buckets pro Minute Rohmaterial ausgewaehlt werden
+# sollen. Die tatsaechliche Bucket-Anzahl wird proportional zur
+# Videolaenge berechnet (nicht fix), siehe scoring.py.
+buckets_per_minute: 0.5
+
+# Proxy-Aufloesung (Hoehe in Pixeln) fuer die schnelle Analyse.
+# Das Original-Video wird dabei niemals veraendert.
+proxy_resolution: 480
+
+# auto-editor: Geschwindigkeitsfaktor fuer stille Abschnitte
+# (16-30 = deutlich beschleunigt statt hartem Schnitt).
+silent_speed: 20
+
+# Beat/Onset-Erkennung (aubio) mit Fallback auf Zeitraster, wenn zu
+# wenige klare Onsets gefunden werden (z.B. bei Videos ohne Musik).
+beats:
+  min_onsets_for_beat_mode: 4
+  fallback_grid_interval_sec: 4.0
+
+# Whisper.cpp Einstellungen (nur relevant ohne --no-ai)
+whisper:
+  binary_path: "whisper.cpp/build/bin/whisper-cli"
+  model_path: "whisper.cpp/models/ggml-small.bin"
+  language: "de"
+
+# LLM-Segment-Scoring (nur relevant ohne --no-ai und mit API_KEY in .env)
+llm:
+  provider: "groq"          # "groq" oder "openrouter"
+  groq_model: "llama-3.1-8b-instant"
+  openrouter_model: "meta-llama/llama-3.1-8b-instruct:free"
+  request_delay_sec: 1.0    # Pause zwischen Requests (Free-Tier Rate-Limits)
+
+# Export-Einstellungen
+output:
+  formats: ["16:9", "9:16", "1:1"]
+  reel_lengths_sec: [60, 90, 120]
+  clip_lengths_sec: [5, 10, 15]
+  output_dir: "output"
+
+# Ressourcenschutz fuer schwache Hardware (Dual-Core, wenig RAM)
+resources:
+  max_parallel_jobs: 2
+  ram_soft_limit_mb: 6000
+  ram_warn_mb: 5000
+
+# Verzeichnisse
+paths:
+  cache_dir: ".autocut_cache"
+  log_dir: "logs"

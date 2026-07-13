@@ -1,0 +1,9 @@
+# Autocut Highlight CLI - Python dependencies
+# Installieren mit: pip install -r requirements.txt
+# (idealerweise in einer venv: python -m venv .venv && source .venv/bin/activate)
+
+click>=8.1
+PyYAML>=6.0
+python-dotenv>=1.0
+requests>=2.31
+psutil>=5.9
