@@ -6,11 +6,12 @@ offline (`--no-ai`); ein optionaler KI-Layer (lokale Transkription per
 whisper.cpp + Cloud-Free-Tier-LLM-Scoring) kann zusaetzlich aktiviert
 werden, wenn ein API-Key vorhanden ist.
 
-Der aktuelle Stand entspricht **Schritt 4** aus `FEATURE-PLAN.md`
-(Fundament + Proxy-Encode/Motion/Audio + Beat-Erkennung via aubio mit
-Zeitraster-Fallback + Stille-Grobschnitt via auto-editor + Score-Fusion
-und Segmentauswahl mit Snap-to-Beat). Der eigentliche Video-Export
-(Encoding/Reels/Kurzclips) folgt in Schritt 5.
+Der aktuelle Stand entspricht **Schritt 5** aus `FEATURE-PLAN.md`:
+Fundament + Proxy-Encode/Motion/Audio + Beat-Erkennung (aubio mit
+Zeitraster-Fallback) + Stille-Grobschnitt (auto-editor) + Score-Fusion
+und Segmentauswahl mit Snap-to-Beat + echter Video-Export (Reels,
+Kurzclips, mehrere Seitenverhaeltnisse). Der optionale KI-Layer
+(Transkription + LLM-Scoring) folgt in Schritt 6/7.
 
 Zielsystem: CachyOS (Arch-basiert), Lenovo ThinkPad T550, Intel
 Dual-Core CPU, Intel HD Graphics 5500 (iGPU, kein NVENC), 8-16 GB RAM.
@@ -102,7 +103,7 @@ python run.py --input ./videos/test.mp4 --no-ai --dry-run
 python run.py --help
 ```
 
-**Aktueller Funktionsumfang (Schritt 3):** Fuer jede Eingabedatei wird
+**Aktueller Funktionsumfang (Schritt 2/3):** Fuer jede Eingabedatei wird
 ein 480p-Proxy erzeugt (Original bleibt unveraendert), anschliessend
 werden parallel berechnet: Motion-Score (Bewegungsintensitaet),
 Audio-Energie (Lautstaerke), Beat/Onset-Erkennung (aubio, mit
@@ -110,21 +111,42 @@ automatischem Zeitraster-Fallback bei fehlender Musik) und
 Stille-Erkennung (auto-editor). Alle Ergebnisse werden in der Konsole
 als Vorschau ausgegeben und unter `.autocut_cache/` gecacht - ein
 zweiter Lauf mit denselben Dateien ist dadurch deutlich schneller.
-Segmentauswahl/Score-Fusion und der eigentliche Video-Export folgen in
-den naechsten Schritten.
 
 Fehlen `aubio` oder `auto-editor` auf dem System, laeuft die Pipeline
 trotzdem vollstaendig durch - es wird nur eine Log-Warnung ausgegeben
 und automatisch auf ein gleichmaessiges Zeitraster bzw. keine
 Stille-Information zurueckgefallen (kein Absturz).
 
-Zusaetzlich wird jetzt fuer jede konfigurierte Reel-Laenge (`--lengths`,
-z.B. 60/90/120s) ein Edit-Plan berechnet: die Zeitfenster mit dem
-hoechsten fusionierten Score (motion+audio, proportional hochskaliert
-ohne KI) werden ueber die gesamte Videolaenge verteilt ausgewaehlt, auf
-die naechsten Beat/Pause-Snap-Punkte gezogen und in der Konsole als
-Zeitstempel-Liste (HH:MM:SS) ausgegeben. Der eigentliche Video-Export
-(echte MP4-Dateien schneiden) folgt erst in Schritt 5.
+Fuer jede konfigurierte Reel-Laenge (`--lengths`, z.B. 60/90/120s) wird
+ein Edit-Plan berechnet: die Zeitfenster mit dem hoechsten fusionierten
+Score (motion+audio, proportional hochskaliert ohne KI) werden ueber
+die gesamte Videolaenge verteilt ausgewaehlt und auf die naechsten
+Beat/Pause-Snap-Punkte gezogen (mit einer maximalen Snap-Distanz, damit
+Segmente nicht auf 0 Sekunden kollabieren). Daraus werden anschliessend
+echte MP4-Highlight-Reels erzeugt - fuer jedes konfigurierte
+Seitenverhaeltnis (`16:9`/`9:16`/`1:1`) eine eigene Datei - sowie
+automatisch abgeleitete Kurzclips (`--clip-lengths`, z.B. 5/10/15s) aus
+dem jeweils ersten konfigurierten Format. Der genutzte Hardware-Encoder
+(VAAPI/QSV/libx264) wird automatisch erkannt und geloggt; schlaegt ein
+Hardware-Encoder fehl, wird automatisch auf libx264 (Software)
+zurueckgefallen.
+
+Ausgabestruktur (Standard-Ordner `output/`):
+```
+output/<videoname>/reels/highlight_60s_16x9.mp4
+output/<videoname>/reels/highlight_60s_9x16.mp4
+output/<videoname>/reels/highlight_60s_1x1.mp4
+output/<videoname>/clips/highlight_60s/5s_000.mp4
+output/<videoname>/clips/highlight_60s/10s_000.mp4
+...
+```
+
+**Hinweis zu VAAPI:** Der VAAPI-Encode-Pfad nutzt standardmaessig das
+Geraet `/dev/dri/renderD128`. Hat dein System mehrere GPUs/Render-Nodes
+(z.B. `renderD129`), oder schlaegt VAAPI-Encoding fehl, faellt das Tool
+automatisch auf `libx264` (Software) zurueck - du verlierst dadurch
+keine Funktionalitaet, nur etwas Geschwindigkeit. Mit `vainfo` kannst
+du pruefen, welches Geraet auf deinem System die HD Graphics 5500 ist.
 
 **Hinweis zu auto-editor-Versionen:** Die auto-editor-CLI hat ihre
 Export-Flags mehrfach geaendert (aeltere Anleitungen nennen z.B.
@@ -156,9 +178,15 @@ src/autocut/
   logging_setup.py          # Logging (Konsole + Datei)
   checkpoint.py             # Checkpointing-Helfer
   resources.py              # RAM-Schutz (Soft-Limits, Warnungen)
+  ffmpeg_utils.py           # ffmpeg/ffprobe-Helfer, HW-Encoder-Erkennung
+  analyse.py                # Proxy-Encode, Motion-Score, Audio-Energie
+  parallel.py                # Begrenzte Parallelverarbeitung
+  beats.py                  # Beat/Onset-Erkennung (aubio) + Fallback
+  silence.py                 # Stille-Erkennung (auto-editor)
+  scoring.py                 # Score-Fusion, Segmentauswahl, Snap-to-Beat
+  encode.py                  # Video-Export: Reels, Kurzclips, Formate
   # weitere Module folgen laut FEATURE-PLAN.md:
-  # ffmpeg_utils.py, analyse.py, parallel.py, beats.py, silence.py,
-  # scoring.py, encode.py, transcribe.py, llm_scoring.py
+  # transcribe.py, llm_scoring.py
 ```
 
 ## Ausbauplan

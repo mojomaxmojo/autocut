@@ -1,10 +1,12 @@
 """CLI-Einstiegspunkt fuer das Autocut Highlight Tool.
 
 Laedt Konfiguration + .env, richtet Logging und RAM-Schutz ein und
-fuehrt die komplette Analyse-Pipeline aus: Proxy-Encode, Motion-Score,
-Audio-Energie, Beat/Stille-Erkennung (Schritt 2/3), sowie Score-Fusion
-und Segmentauswahl mit Snap-to-Beat (Schritt 4). Encoding/Export und
-optionale KI-Schritte werden gemaess FEATURE-PLAN.md ergaenzt.
+fuehrt die komplette Pipeline aus: Proxy-Encode, Motion-Score,
+Audio-Energie, Beat/Stille-Erkennung (Schritt 2/3), Score-Fusion und
+Segmentauswahl mit Snap-to-Beat (Schritt 4), sowie den Video-Export als
+Highlight-Reels + Kurzclips in mehreren Formaten (Schritt 5). Optionale
+KI-Schritte (Transkription, LLM-Scoring) werden gemaess
+FEATURE-PLAN.md ergaenzt.
 """
 
 from __future__ import annotations
@@ -15,7 +17,10 @@ from pathlib import Path
 import click
 
 from .analyse import run_analysis
+from .checkpoint import video_cache_dir
 from .config import Config, ConfigError, load_config, load_env
+from .encode import export_all
+from .ffmpeg_utils import detect_hw_encoder
 from .logging_setup import setup_logging
 from .resources import set_soft_ram_limit, warn_if_high_memory
 from .scoring import build_edit_plan, fuse_scores, select_buckets
@@ -153,9 +158,9 @@ def main(
             return
         for index, video_path in enumerate(video_files, start=1):
             logger.info("--- Video %d/%d: %s ---", index, len(video_files), video_path.name)
-            _run_analysis_for_video(str(video_path), config, logger, reel_lengths)
+            _run_analysis_for_video(str(video_path), config, logger, reel_lengths, clip_lengths)
     else:
-        _run_analysis_for_video(input_path, config, logger, reel_lengths)
+        _run_analysis_for_video(input_path, config, logger, reel_lengths, clip_lengths)
 
 
 def _format_hms(seconds: float) -> str:
@@ -171,11 +176,11 @@ def _run_analysis_for_video(
     config: Config,
     logger: logging.Logger,
     reel_lengths: list[int],
+    clip_lengths: list[int],
 ) -> None:
-    """Fuehrt die Analyse-Pipeline (Schritt 2/3) sowie Score-Fusion und
-    Segmentauswahl (Schritt 4) fuer ein einzelnes Video aus und gibt
-    eine kurze, verstaendliche Zusammenfassung aus. Der eigentliche
-    Video-Export folgt erst in Schritt 5."""
+    """Fuehrt die komplette Pipeline fuer ein einzelnes Video aus:
+    Analyse (Schritt 2/3), Score-Fusion/Segmentauswahl (Schritt 4) und
+    Video-Export (Schritt 5: Reels + Kurzclips + mehrere Formate)."""
     result = run_analysis(video_path, config, logger)
     warn_if_high_memory(logger, config.resources.ram_warn_mb)
 
@@ -211,10 +216,12 @@ def _run_analysis_for_video(
         config.buckets_per_minute,
     )
 
+    edit_plans_by_length: dict[int, list[tuple[float, float]]] = {}
     for reel_length in reel_lengths:
         edit_plan = build_edit_plan(
             selected, result.snap_points, float(reel_length), config.beats.max_snap_distance_sec
         )
+        edit_plans_by_length[reel_length] = edit_plan
         total_selected = sum(end - start for start, end in edit_plan)
         logger.info(
             "  Edit-Plan fuer %ds-Reel: %d Segment(e), %.1fs Gesamtlaenge",
@@ -224,6 +231,31 @@ def _run_analysis_for_video(
         )
         for start, end in edit_plan:
             logger.info("    %s - %s", _format_hms(start), _format_hms(end))
+
+    # Video-Export (Schritt 5): echte MP4-Reels + Kurzclips erzeugen.
+    hw_encoder = detect_hw_encoder(logger)
+    cache_dir = video_cache_dir(video_path, config.paths.cache_dir)
+    video_name = Path(video_path).stem
+    video_output_dir = Path(config.output.output_dir) / video_name
+
+    export_result = export_all(
+        edit_plans_by_length,
+        video_path,
+        hw_encoder,
+        cache_dir,
+        video_output_dir,
+        config.output.formats,
+        clip_lengths,
+        logger,
+    )
+    logger.info(
+        "  Export abgeschlossen: %d Reel(s), %d Kurzclip(s) in %s",
+        len(export_result["reels"]),
+        len(export_result["clips"]),
+        video_output_dir,
+    )
+    for path in export_result["reels"]:
+        logger.info("    Reel: %s", path)
 
 
 cli = main
