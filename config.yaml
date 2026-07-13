@@ -16,7 +16,10 @@ weights:
 # Wie viele Highlight-Buckets pro Minute Rohmaterial ausgewaehlt werden
 # sollen. Die tatsaechliche Bucket-Anzahl wird proportional zur
 # Videolaenge berechnet (nicht fix), siehe scoring.py.
-buckets_per_minute: 0.5
+# Beispiel: bei einem 3-Minuten-Video ergibt 0.5 nur 2 Segmente (rund),
+# waehrend 4.0 bereits 12 Segmente ergibt - fuer kurze Testclips oder
+# wenn du generell mehr Schnitte willst, den Wert erhoehen.
+buckets_per_minute: 2.0
 
 # Proxy-Aufloesung (Hoehe in Pixeln) fuer die schnelle Analyse.
 # Das Original-Video wird dabei niemals veraendert.
@@ -75,7 +78,7 @@ whisper:
   # Danach hier den Pfad eintragen, z.B.:
   #   vad_model_path: "whisper.cpp/models/ggml-silero-v6.2.0.bin"
   # Leer lassen (Standard), um VAD zu deaktivieren.
-  vad_model_path:"vad_model_path: "whisper.cpp/models/ggml-silero-v6.2.0.bin""
+  vad_model_path: "whisper.cpp/models/ggml-silero-v6.2.0.bin"
 
 # LLM-Segment-Scoring (nur relevant ohne --no-ai und mit API_KEY in .env)
 llm:
