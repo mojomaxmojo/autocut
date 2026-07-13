@@ -137,10 +137,20 @@ def select_buckets(
     return selected
 
 
-def snap_to_nearest(timestamp: float, snap_points: list[float]) -> float:
+def snap_to_nearest(
+    timestamp: float,
+    snap_points: list[float],
+    max_distance: float | None = None,
+) -> float:
     """Snapt einen Zeitstempel auf den naechstgelegenen Beat/Pause-Punkt.
+
     Gibt den unveraenderten Zeitstempel zurueck, wenn keine Snap-Punkte
-    vorhanden sind (reine Hilfsfunktion, kein I/O)."""
+    vorhanden sind, oder wenn der naechstgelegene Snap-Punkt weiter als
+    `max_distance` entfernt ist (verhindert, dass grosse Luecken in den
+    Snap-Punkten - z.B. durch herausgefilterte stille Segmente - eine
+    Schnittkante um mehrere Sekunden verschieben und dadurch Start und
+    Ende eines Segments auf denselben Punkt kollabieren lassen).
+    """
     if not snap_points:
         return timestamp
 
@@ -151,7 +161,10 @@ def snap_to_nearest(timestamp: float, snap_points: list[float]) -> float:
     if pos > 0:
         candidates.append(snap_points[pos - 1])
 
-    return min(candidates, key=lambda p: abs(p - timestamp))
+    nearest = min(candidates, key=lambda p: abs(p - timestamp))
+    if max_distance is not None and abs(nearest - timestamp) > max_distance:
+        return timestamp
+    return nearest
 
 
 def _merge_overlapping(segments: list[tuple[float, float]]) -> list[tuple[float, float]]:
@@ -174,10 +187,12 @@ def build_edit_plan(
     selected_windows: list[ScoredWindow],
     snap_points: list[float],
     target_length_sec: float,
+    max_snap_distance: float = 1.5,
 ) -> list[tuple[float, float]]:
     """Baut aus den ausgewaehlten Highlight-Fenstern eine finale Liste
     von (start, end)-Paaren fuer ein Reel der gewuenschten Ziellaenge,
-    mit Schnittkanten, die auf die naechsten Snap-Punkte gezogen sind.
+    mit Schnittkanten, die auf die naechsten Snap-Punkte gezogen sind
+    (begrenzt durch max_snap_distance, siehe snap_to_nearest).
 
     Vorgehen: Fenster nach Score sortiert aufsammeln, bis die
     Ziellaenge erreicht ist (oder alle Fenster verbraucht sind), dann
@@ -200,12 +215,15 @@ def build_edit_plan(
 
     snapped_pairs = []
     for window in chosen:
-        snapped_start = snap_to_nearest(window.start, snap_points)
-        snapped_end = snap_to_nearest(window.end, snap_points)
-        if snapped_end <= snapped_start:
-            # Snapping hat ein entartetes (zu kurzes/negatives) Segment
-            # erzeugt - lieber die urspruenglichen, ungesnappten Grenzen
-            # behalten als ein kaputtes Segment zu produzieren.
+        original_length = window.end - window.start
+        snapped_start = snap_to_nearest(window.start, snap_points, max_snap_distance)
+        snapped_end = snap_to_nearest(window.end, snap_points, max_snap_distance)
+        # Sicherheitsnetz: selbst mit max_snap_distance koennten zwei
+        # nahe beieinander liegende Snap-Punkte ein zu kurzes Segment
+        # erzeugen. Faellt das gesnappte Segment auf weniger als die
+        # Haelfte der urspruenglichen Laenge zusammen (oder wird sogar
+        # negativ), behalten wir lieber die ungesnappten Originalgrenzen.
+        if snapped_end <= snapped_start or (snapped_end - snapped_start) < original_length * 0.5:
             snapped_start, snapped_end = window.start, window.end
         snapped_pairs.append((round(snapped_start, 2), round(snapped_end, 2)))
 

@@ -33,6 +33,14 @@ class Weights:
 class BeatsConfig:
     min_onsets_for_beat_mode: int = 4
     fallback_grid_interval_sec: float = 4.0
+    # Maximaler Abstand (Sekunden), um den eine Schnittkante beim
+    # Snapping verschoben werden darf. Liegt der naechste Snap-Punkt
+    # weiter weg (z.B. weil Snap-Punkte in stillen Segmenten
+    # herausgefiltert wurden und dadurch grosse Luecken entstehen),
+    # bleibt die urspruengliche, ungesnappte Zeit erhalten - sonst
+    # koennten Start und Ende eines Segments auf denselben Punkt
+    # kollabieren.
+    max_snap_distance_sec: float = 1.5
 
 
 @dataclass

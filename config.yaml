@@ -35,6 +35,12 @@ bucket_window_sec: 5.0
 beats:
   min_onsets_for_beat_mode: 4
   fallback_grid_interval_sec: 4.0
+  # Schnittkanten werden hoechstens um diese Anzahl Sekunden verschoben.
+  # Ist der naechste Snap-Punkt weiter weg (z.B. grosse Luecke durch
+  # herausgefilterte Snap-Punkte in stillen Segmenten), bleibt die
+  # urspruengliche Zeit erhalten statt ein zu kurzes/kollabiertes
+  # Segment zu erzeugen.
+  max_snap_distance_sec: 1.5
 
 # Motion-Score via ffmpeg mpdecimate-Filter auf dem Proxy-Video.
 # hi/lo: Schwellenwerte fuer den Frame-Unterschied (je hoeher, desto

@@ -212,7 +212,9 @@ def _run_analysis_for_video(
     )
 
     for reel_length in reel_lengths:
-        edit_plan = build_edit_plan(selected, result.snap_points, float(reel_length))
+        edit_plan = build_edit_plan(
+            selected, result.snap_points, float(reel_length), config.beats.max_snap_distance_sec
+        )
         total_selected = sum(end - start for start, end in edit_plan)
         logger.info(
             "  Edit-Plan fuer %ds-Reel: %d Segment(e), %.1fs Gesamtlaenge",
